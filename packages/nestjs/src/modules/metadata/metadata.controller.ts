@@ -9,9 +9,7 @@ export class MetadataController {
 
   async getMetadata() {
     const meta = this.metadataService.getMetadata();
-    return ODataResponse.item(meta.entityTypes)
-      .context(meta['@odata.context'])
-      .build();
+    return ODataResponse.item(meta.entityTypes).context(meta['@odata.context']).build();
   }
 
   async getEntityType(req: Request, res: Response) {
@@ -22,7 +20,10 @@ export class MetadataController {
     const entity = this.metadataService.getEntityTypeByFragment(fragment);
     if (!entity) {
       res.status(404);
-      return ODataResponse.error('EntityTypeNotFound', `Entity type '${fragment}' not found`).build();
+      return ODataResponse.error(
+        'EntityTypeNotFound',
+        `Entity type '${fragment}' not found`,
+      ).build();
     }
     return ODataResponse.item(entity).build();
   }

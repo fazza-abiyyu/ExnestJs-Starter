@@ -1,27 +1,27 @@
-import { parseODataQuery, type ODataPrismaQuery } from './query.js'
+import { parseODataQuery, type ODataPrismaQuery } from './query.js';
 
 export interface PaginatedResult<T> {
-  items: T[]
-  total: number
-  skip: number
-  take?: number
+  items: T[];
+  total: number;
+  skip: number;
+  take?: number;
 }
 
 export interface ODataListArgs {
-  query: Record<string, unknown>
-  defaultOrderBy?: Record<string, 'asc' | 'desc'> | Record<string, 'asc' | 'desc'>[]
-  defaultTop?: number
-  include?: Record<string, any>
-  select?: Record<string, any>
+  query: Record<string, unknown>;
+  defaultOrderBy?: Record<string, 'asc' | 'desc'> | Record<string, 'asc' | 'desc'>[];
+  defaultTop?: number;
+  include?: Record<string, any>;
+  select?: Record<string, any>;
 }
 
 function resolveOrderBy(
   prismaQuery: ODataPrismaQuery,
   defaultOrderBy?: Record<string, 'asc' | 'desc'> | Record<string, 'asc' | 'desc'>[],
 ) {
-  if (prismaQuery.orderBy) return prismaQuery.orderBy
-  if (defaultOrderBy) return defaultOrderBy
-  return { id: 'desc' as const }
+  if (prismaQuery.orderBy) return prismaQuery.orderBy;
+  if (defaultOrderBy) return defaultOrderBy;
+  return { id: 'desc' as const };
 }
 
 export function buildNextLink(
@@ -31,23 +31,23 @@ export function buildNextLink(
   top: number | undefined,
   total: number,
 ): string | undefined {
-  if (!top || top <= 0) return undefined
+  if (!top || top <= 0) return undefined;
 
-  const nextSkip = currentSkip + top
-  if (nextSkip >= total) return undefined
+  const nextSkip = currentSkip + top;
+  if (nextSkip >= total) return undefined;
 
-  const params = new URLSearchParams()
+  const params = new URLSearchParams();
   for (const [key, value] of Object.entries(query)) {
-    if (key === '$skip' || key === '$top') continue
-    if (value !== undefined && value !== null) {
-      params.set(key, String(value))
+    if (key === '$skip' || key === '$top') continue;
+    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+      params.set(key, String(value));
     }
   }
-  params.set('$top', String(top))
-  params.set('$skip', String(nextSkip))
+  params.set('$top', String(top));
+  params.set('$skip', String(nextSkip));
 
-  const qs = params.toString()
-  return qs ? `${basePath}?${qs}` : basePath
+  const qs = params.toString();
+  return qs ? `${basePath}?${qs}` : basePath;
 }
 
 export async function paginateList<TItem>(
@@ -56,33 +56,33 @@ export async function paginateList<TItem>(
   where: Record<string, unknown>,
   options: ODataListArgs,
 ): Promise<PaginatedResult<TItem>> {
-  const prismaQuery = parseODataQuery(options.query)
+  const prismaQuery = parseODataQuery(options.query);
 
-  const take = prismaQuery.take ?? options.defaultTop
-  const skip = prismaQuery.skip ?? 0
+  const take = prismaQuery.take ?? options.defaultTop;
+  const skip = prismaQuery.skip ?? 0;
 
-  const orderBy = resolveOrderBy(prismaQuery, options.defaultOrderBy)
+  const orderBy = resolveOrderBy(prismaQuery, options.defaultOrderBy);
 
   const findArgs: Record<string, any> = {
     where,
     orderBy,
-  }
+  };
 
   if (take !== undefined && take > 0) {
-    findArgs.take = take
+    findArgs.take = take;
   }
   if (skip !== undefined && skip > 0) {
-    findArgs.skip = skip
+    findArgs.skip = skip;
   }
 
   if (options.include) {
-    findArgs.include = options.include
+    findArgs.include = options.include;
   }
   if (options.select) {
-    findArgs.select = options.select
+    findArgs.select = options.select;
   }
 
-  const [items, total] = await Promise.all([findMany(findArgs), count({ where })])
+  const [items, total] = await Promise.all([findMany(findArgs), count({ where })]);
 
-  return { items, total, skip, take }
+  return { items, total, skip, take };
 }

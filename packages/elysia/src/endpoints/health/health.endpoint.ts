@@ -1,4 +1,4 @@
-import type { RouteConfig } from '../../lib/endpoint/index.js'
+import type { RouteConfig } from '../../lib/endpoint/index.js';
 
 export const healthRoutes: RouteConfig[] = [
   {
@@ -18,4 +18,4 @@ export const healthRoutes: RouteConfig[] = [
       { status: 503, description: 'Service unavailable' },
     ],
   },
-]
+];

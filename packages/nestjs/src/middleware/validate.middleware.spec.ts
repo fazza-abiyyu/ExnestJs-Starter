@@ -36,13 +36,11 @@ describe('validate middleware', () => {
     expect(next).not.toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(400);
 
-    /* eslint-disable @typescript-eslint/no-unsafe-assignment */
     expect(res.json).toHaveBeenCalledWith(
       expect.objectContaining({
         error: expect.objectContaining({ code: 'VALIDATION_ERROR' }),
       }),
     );
-    /* eslint-enable @typescript-eslint/no-unsafe-assignment */
   });
 
   it('should pass valid query through', () => {

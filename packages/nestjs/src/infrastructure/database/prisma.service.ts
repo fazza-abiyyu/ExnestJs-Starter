@@ -8,10 +8,12 @@ const { Pool } = pkg;
 
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
-  constructor(configService: ConfigService) {
-    const isTest = configService.env.NODE_ENV === 'test';
+  private readonly isTestMode: boolean;
 
-    if (isTest) {
+  constructor(configService: ConfigService) {
+    const isTestMode = configService.env.NODE_ENV === 'test';
+
+    if (isTestMode) {
       super({ accelerateUrl: 'prisma://localhost' });
     } else {
       const pool = new Pool({
@@ -20,13 +22,17 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
       const adapter = new PrismaPg(pool);
       super({ adapter });
     }
+
+    this.isTestMode = isTestMode;
   }
 
   async onModuleInit() {
+    if (this.isTestMode) return;
     await this.$connect();
   }
 
   async onModuleDestroy() {
+    if (this.isTestMode) return;
     await this.$disconnect();
   }
 }

@@ -1,1 +1,1 @@
-export * from './customers.endpoint.js'
+export * from './customers.endpoint.js';

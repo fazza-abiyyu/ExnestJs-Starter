@@ -1,4 +1,4 @@
-import type { RouteConfig } from '../../lib/endpoint/index.js'
+import type { RouteConfig } from '../../lib/endpoint/index.js';
 
 export const metadataRoutes: RouteConfig[] = [
   {
@@ -18,4 +18,4 @@ export const metadataRoutes: RouteConfig[] = [
       { status: 404, description: 'Entity type not found' },
     ],
   },
-]
+];

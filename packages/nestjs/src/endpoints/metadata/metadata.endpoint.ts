@@ -8,9 +8,7 @@ const metadataConfigs: EndpointConfig[] = [
     controller: MetadataController,
     handler: 'getMetadata',
     tags: ['metadata'],
-    responses: [
-      { status: 200, description: 'All OData entity types' },
-    ],
+    responses: [{ status: 200, description: 'All OData entity types' }],
   },
   {
     method: 'GET',

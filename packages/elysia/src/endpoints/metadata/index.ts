@@ -1,1 +1,1 @@
-export * from './metadata.endpoint.js'
+export * from './metadata.endpoint.js';

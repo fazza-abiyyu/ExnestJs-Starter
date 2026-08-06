@@ -1,4 +1,4 @@
-import { odataI18n } from '../../lib/odata/index.js'
+import { odataI18n } from '../../lib/odata/index.js';
 
 export function registerCustomersTranslations(): void {
   odataI18n.register('id', {
@@ -7,7 +7,7 @@ export function registerCustomersTranslations(): void {
     CustomerCreated: 'Customer berhasil dibuat',
     CustomerUpdated: 'Customer berhasil diperbarui',
     CustomerArchived: 'Customer berhasil diarsipkan',
-  })
+  });
 
   odataI18n.register('en', {
     CustomerNotFound: 'Customer not found',
@@ -15,5 +15,5 @@ export function registerCustomersTranslations(): void {
     CustomerCreated: 'Customer created successfully',
     CustomerUpdated: 'Customer updated successfully',
     CustomerArchived: 'Customer archived successfully',
-  })
+  });
 }

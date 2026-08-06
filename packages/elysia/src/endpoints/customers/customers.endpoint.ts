@@ -1,5 +1,8 @@
-import type { RouteConfig } from '../../lib/endpoint/index.js'
-import { createCustomerSchema, updateCustomerSchema } from '../../modules/customers/customers.dto.js'
+import type { RouteConfig } from '../../lib/endpoint/index.js';
+import {
+  createCustomerSchema,
+  updateCustomerSchema,
+} from '../../modules/customers/customers.dto.js';
 
 export const customersRoutes: RouteConfig[] = [
   {
@@ -56,4 +59,4 @@ export const customersRoutes: RouteConfig[] = [
       { status: 404, description: 'Customer not found' },
     ],
   },
-]
+];

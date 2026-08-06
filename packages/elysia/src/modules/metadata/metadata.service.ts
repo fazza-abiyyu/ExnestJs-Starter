@@ -1,5 +1,5 @@
-import { config } from '../../infrastructure/config/index.js'
-import type { MetadataResponse, MetadataEntityType } from './metadata.interface.js'
+import { config } from '../../infrastructure/config/index.js';
+import type { MetadataResponse, MetadataEntityType } from './metadata.interface.js';
 
 export class MetadataService {
   getEntityTypes(): MetadataEntityType[] {
@@ -87,17 +87,17 @@ export class MetadataService {
         description: 'Logout response',
         properties: [{ name: 'message', type: 'Edm.String' }],
       },
-    ]
+    ];
   }
 
   getMetadata(): MetadataResponse & { '@odata.context': string } {
     return {
       '@odata.context': `${config.apiBaseUrl}/$metadata`,
       entityTypes: this.getEntityTypes(),
-    }
+    };
   }
 
   getEntityTypeByFragment(fragment: string): MetadataEntityType | undefined {
-    return this.getEntityTypes().find((t) => t.fragment === fragment)
+    return this.getEntityTypes().find((t) => t.fragment === fragment);
   }
 }

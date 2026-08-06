@@ -91,9 +91,7 @@ export class MetadataService {
         name: 'Auth.Logout',
         fragment: 'Auth.Logout',
         description: 'Logout response',
-        properties: [
-          { name: 'message', type: 'Edm.String' },
-        ],
+        properties: [{ name: 'message', type: 'Edm.String' }],
       },
     ];
   }
