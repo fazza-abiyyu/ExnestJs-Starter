@@ -1,0 +1,371 @@
+import { writeFileSync, readFileSync, mkdirSync, existsSync } from 'fs';
+import { resolve } from 'path';
+import { z } from 'zod';
+import { endpointRegistry } from '../src/endpoints/registry.js';
+import type { EndpointConfig } from '../src/lib/endpoint/index.js';
+import { healthScenarios, metadataScenarios } from './postman/index.js';
+
+const pkg = JSON.parse(readFileSync(resolve(__dirname, '../package.json'), 'utf-8'));
+const appName = pkg.name ?? 'unnamed';
+
+interface FormDataEntry {
+  key: string;
+  type: 'text' | 'file';
+  value?: string;
+  src?: string;
+  content?: string;
+  contentType?: string;
+}
+
+interface Scenario {
+  name: string;
+  query?: Record<string, string>;
+  headers?: Record<string, string>;
+  body?: Record<string, unknown>;
+  formdata?: FormDataEntry[];
+  prerequest?: string[];
+  expect: {
+    status: number;
+    body?: Record<string, unknown>;
+  };
+}
+
+export interface CustomScenario extends Scenario {
+  tests?: string[];
+  params?: Record<string, string>;
+}
+
+const customScenarios: Record<string, CustomScenario[]> = {
+  ...healthScenarios,
+  ...metadataScenarios,
+};
+
+function endpointKey(config: EndpointConfig): string {
+  return `${config.method} ${config.path}`;
+}
+
+function generateExample(schema: z.ZodTypeAny, fieldName?: string): unknown {
+  if (schema instanceof z.ZodObject) {
+    const result: Record<string, unknown> = {};
+    for (const [key, valueSchema] of Object.entries(schema.shape)) {
+      result[key] = generateExample(valueSchema, key);
+    }
+    return result;
+  }
+
+  if (schema instanceof z.ZodString) {
+    if (fieldName?.toLowerCase().includes('email')) return 'user@example.com';
+    if (fieldName?.toLowerCase().includes('password')) return 'P@ssw0rd123';
+    if (fieldName?.toLowerCase().includes('name') || fieldName?.toLowerCase().includes('display'))
+      return 'John Doe';
+    if (fieldName?.toLowerCase().includes('phone')) return '+6281234567890';
+    if (fieldName?.toLowerCase().includes('url')) return 'https://example.com/image.png';
+    return 'string';
+  }
+
+  if (schema instanceof z.ZodNumber) return 1;
+  if (schema instanceof z.ZodBoolean) return true;
+  if (schema instanceof z.ZodArray) {
+    return [generateExample(schema.element as unknown as z.ZodTypeAny)];
+  }
+  if (schema instanceof z.ZodEnum) return schema.options[0];
+
+  if (
+    schema instanceof z.ZodOptional ||
+    schema instanceof z.ZodNullable ||
+    schema instanceof z.ZodDefault
+  ) {
+    return generateExample(schema.unwrap() as unknown as z.ZodTypeAny, fieldName);
+  }
+
+  if (schema instanceof z.ZodLiteral) return schema.value;
+  if (schema instanceof z.ZodReadonly) {
+    return generateExample(schema.unwrap() as unknown as z.ZodTypeAny, fieldName);
+  }
+  if (schema instanceof z.ZodUnion) {
+    return generateExample(schema.options[0] as unknown as z.ZodTypeAny, fieldName);
+  }
+
+  return null;
+}
+
+function generateInvalidExample(schema: z.ZodTypeAny, fieldName?: string): unknown {
+  if (schema instanceof z.ZodObject) {
+    const result: Record<string, unknown> = {};
+    for (const [key, valueSchema] of Object.entries(schema.shape)) {
+      result[key] = generateInvalidExample(valueSchema, key);
+    }
+    return result;
+  }
+
+  if (schema instanceof z.ZodString) {
+    if (fieldName?.toLowerCase().includes('email')) return 'not-an-email';
+    return fieldName?.toLowerCase().includes('password') ? 'a' : '';
+  }
+
+  if (schema instanceof z.ZodNumber) return 'not-a-number';
+  if (schema instanceof z.ZodBoolean) return 'not-a-boolean';
+  if (schema instanceof z.ZodArray) return 'not-an-array';
+
+  if (
+    schema instanceof z.ZodOptional ||
+    schema instanceof z.ZodNullable ||
+    schema instanceof z.ZodDefault
+  ) {
+    return generateInvalidExample(schema.unwrap() as unknown as z.ZodTypeAny, fieldName);
+  }
+
+  return null;
+}
+
+function findSuccessStatus(config: EndpointConfig): number {
+  if (!config.responses?.length) {
+    return config.method === 'POST' ? 201 : 200;
+  }
+  const successCodes = config.responses.filter((r) => r.status < 400).map((r) => r.status);
+  return successCodes.length > 0 ? Math.min(...successCodes) : config.method === 'POST' ? 201 : 200;
+}
+
+function interpolateBody(body: Record<string, unknown>): string {
+  return JSON.stringify(body, null, 2);
+}
+
+function generateScenarios(config: EndpointConfig): CustomScenario[] {
+  const key = endpointKey(config);
+  if (customScenarios[key]) return customScenarios[key];
+
+  const scenarios: CustomScenario[] = [];
+  const successStatus = findSuccessStatus(config);
+
+  const success: CustomScenario = { name: 'Success', expect: { status: successStatus } };
+  if (config.schema?.body) {
+    success.body = generateExample(config.schema.body) as Record<string, unknown>;
+  }
+  scenarios.push(success);
+
+  for (const res of config.responses ?? []) {
+    if (res.status === successStatus) continue;
+    if (res.status === 500) continue;
+
+    const scenario: CustomScenario = {
+      name: res.description ?? `Status ${res.status}`,
+      expect: { status: res.status },
+    };
+
+    if (res.status === 400 && config.schema?.body) {
+      scenario.body = generateInvalidExample(config.schema.body) as Record<string, unknown>;
+    } else if (config.schema?.body && res.status >= 400) {
+      scenario.body = generateExample(config.schema.body) as Record<string, unknown>;
+    }
+
+    scenarios.push(scenario);
+  }
+
+  return scenarios;
+}
+
+function buildTestScript(
+  expectStatus: number,
+  expectBody?: Record<string, unknown>,
+  customTests?: string[],
+): string {
+  const skipVars: string[] = [];
+  let skipStatusAssertion = false;
+
+  if (customTests) {
+    for (let i = customTests.length - 1; i >= 0; i--) {
+      const match = customTests[i].match(/^__skipIf\(([^)]+)\)$/);
+      if (match) {
+        skipVars.push(match[1]);
+        customTests.splice(i, 1);
+        continue;
+      }
+      if (customTests[i] === '__skipStatusAssertion__') {
+        skipStatusAssertion = true;
+        customTests.splice(i, 1);
+      }
+    }
+  }
+
+  const assertions: string[] = [];
+  if (!skipStatusAssertion) {
+    assertions.push(`pm.response.to.have.status(${expectStatus})`);
+  }
+
+  if (expectBody) {
+    for (const [key, value] of Object.entries(expectBody)) {
+      const isLiteralKey = key.includes('@');
+      if (isLiteralKey) {
+        assertions.push(
+          `pm.expect(pm.response.json()[${JSON.stringify(key)}]).eql(${JSON.stringify(value)})`,
+        );
+      } else {
+        const parts = key.split('.');
+        const accessor = parts
+          .map((p) => (/^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(p) ? `.${p}` : `[${JSON.stringify(p)}]`))
+          .join('');
+        assertions.push(`pm.expect(pm.response.json()${accessor}).eql(${JSON.stringify(value)})`);
+      }
+    }
+  }
+
+  if (customTests) {
+    for (const test of customTests) {
+      assertions.push(test);
+    }
+  }
+
+  const body = assertions.join(';\n');
+
+  if (skipVars.length > 0) {
+    const guard = skipVars
+      .map(
+        (v) =>
+          `(function() { var v = pm.collectionVariables.get(${JSON.stringify(v)}); return !!v; })()`,
+      )
+      .join(' && ');
+    return `if (${guard}) { ${body} } else { pm.test("Skipped: required variable not set", function() { pm.expect(true).to.be.true; }); }`;
+  }
+
+  return body;
+}
+
+function buildQueryString(query?: Record<string, string>): string {
+  if (!query) return '';
+  return '?' + new URLSearchParams(query).toString();
+}
+
+function folderName(path: string): string {
+  return path.split('/').filter(Boolean)[0] ?? 'ungrouped';
+}
+
+function buildItem(config: EndpointConfig, scenario: CustomScenario): Record<string, unknown> {
+  let resolvedPath = config.path;
+  if (scenario.params) {
+    for (const [key, value] of Object.entries(scenario.params)) {
+      resolvedPath = resolvedPath.replace(`:${key}`, value);
+    }
+  }
+  const path = resolvedPath + buildQueryString(scenario.query);
+  const testScript = buildTestScript(scenario.expect.status, scenario.expect.body, scenario.tests);
+  const events: Record<string, unknown>[] = [];
+
+  if (scenario.prerequest) {
+    const hasAwait = scenario.prerequest.some((line) => line.includes('await'));
+    let execLines = scenario.prerequest;
+    if (hasAwait) {
+      execLines = [
+        '(async () => {',
+        '  const sendRequest = (options) => new Promise((resolve, reject) => {',
+        '    pm.sendRequest(options, (err, res) => {',
+        '      if (err) reject(err);',
+        '      else resolve(res);',
+        '    });',
+        '  });',
+        ...scenario.prerequest.map(
+          (line) => '  ' + line.replace(/pm\.sendRequest/g, 'sendRequest'),
+        ),
+        '})().catch(console.error);',
+      ];
+    }
+    events.push({
+      listen: 'prerequest',
+      script: {
+        exec: execLines,
+        type: 'text/javascript',
+      },
+    });
+  }
+
+  events.push({
+    listen: 'test',
+    script: {
+      exec: testScript.split('\n'),
+      type: 'text/javascript',
+    },
+  });
+
+  const headers: Record<string, string>[] = [];
+  if (scenario.headers) {
+    for (const [key, value] of Object.entries(scenario.headers)) {
+      headers.push({ key, value });
+    }
+  }
+
+  const request: Record<string, unknown> = {
+    method: config.method,
+    header: headers,
+    url: {
+      raw: `{{baseUrl}}${path}`,
+      host: ['{{baseUrl}}'],
+      path: path.split('/').filter(Boolean),
+    },
+  };
+
+  if (scenario.body) {
+    request.body = {
+      mode: 'raw',
+      raw: interpolateBody(scenario.body),
+    };
+    if (!headers.find((h) => h.key === 'Content-Type')) {
+      headers.push({ key: 'Content-Type', value: 'application/json' });
+    }
+  }
+
+  if (scenario.formdata) {
+    request.body = {
+      mode: 'formdata',
+      formdata: scenario.formdata.map((entry) => ({
+        key: entry.key,
+        type: entry.type,
+        ...(entry.type === 'file' && entry.content ? { content: entry.content } : {}),
+        ...(entry.type === 'file' && entry.src && !entry.content ? { src: entry.src } : {}),
+        ...(entry.type === 'text' && entry.value !== undefined ? { value: entry.value } : {}),
+        ...(entry.contentType ? { contentType: entry.contentType } : {}),
+      })),
+    };
+  }
+
+  return {
+    name: `${config.method} ${path}`,
+    event: events,
+    request,
+  };
+}
+
+function generate(): void {
+  const folders = new Map<string, Record<string, unknown>[]>();
+
+  for (const config of endpointRegistry) {
+    const folder = folderName(config.path);
+    if (!folders.has(folder)) folders.set(folder, []);
+
+    for (const scenario of generateScenarios(config)) {
+      folders.get(folder)!.push(buildItem(config, scenario));
+    }
+  }
+
+  const items: Record<string, unknown>[] = [];
+  for (const [name, children] of folders) {
+    items.push({ name, item: children });
+  }
+
+  const collection = {
+    info: {
+      name: 'Exnest API',
+      description: 'Auto-generated from endpoint configs',
+      schema: 'https://schema.getpostman.com/json/collection/v2.1.0/collection.json',
+    },
+    item: items,
+    variable: [{ key: 'baseUrl', value: 'http://localhost:3000', type: 'string' }],
+  };
+
+  const outputDir = resolve(__dirname, '../postman');
+  if (!existsSync(outputDir)) mkdirSync(outputDir, { recursive: true });
+
+  const outputPath = resolve(outputDir, `${appName}.postman_collection.json`);
+  writeFileSync(outputPath, JSON.stringify(collection, null, 2), 'utf-8');
+  console.log(`Postman collection generated: ${outputPath}`);
+}
+
+generate();

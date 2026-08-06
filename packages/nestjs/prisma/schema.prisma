@@ -1,0 +1,14 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["driverAdapters"]
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model HealthCheck {
+  id        String   @id @default(uuid())
+  status    String
+  checkedAt DateTime @default(now())
+}

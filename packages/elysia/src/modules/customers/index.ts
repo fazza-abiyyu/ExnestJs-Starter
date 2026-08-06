@@ -1,0 +1,5 @@
+export * from './customers.dto.js'
+export * from './customers.interface.js'
+export * from './customers.service.js'
+export * from './customers.controller.js'
+export * from './customers.module.js'
