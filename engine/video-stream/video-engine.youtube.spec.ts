@@ -1,7 +1,35 @@
-import { afterAll, describe, expect, test } from 'bun:test';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { afterAll, describe, expect, mock, test } from 'bun:test';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+
+const fakeYtdl = {
+  exec(url: string, args: Record<string, unknown>) {
+    const child = {
+      async then(onFulfilled?: (value: unknown) => unknown, onRejected?: (reason: unknown) => unknown) {
+        try {
+          let output: string;
+          if (url.includes('private')) {
+            throw Object.assign(new Error('Sign in to confirm you are not a bot'), { statusCode: 403 });
+          }
+          if (url.includes('empty')) {
+            output = JSON.stringify({ title: 'No Formats' });
+          } else {
+            output = JSON.stringify({ title: 'Fake YT Title', url: 'https://example.com/v.mp4' });
+          }
+          return onFulfilled?.({ stdout: output, stderr: '' });
+        } catch (reason) {
+          return onRejected?.(reason);
+        }
+      },
+      kill() {},
+    };
+    return child;
+  },
+};
+
+mock.module('youtube-dl-exec', () => ({ default: fakeYtdl }));
+
 import {
   VideoStreamEngine,
   isYouTubeUrl,
@@ -10,16 +38,6 @@ import {
   type VideoStore,
   type VideoUpdatePatch,
 } from './index.js';
-
-function fakeYtdlp(dir: string): string {
-  const path = join(dir, 'fake-yt-dlp');
-  writeFileSync(
-    path,
-    '#!/bin/sh\nprintf "Fake YT Title\\nhttps://example.com/v.mp4\\n"\nexit 0\n',
-    { mode: 0o755 },
-  );
-  return path;
-}
 
 class MemoryStore implements VideoStore {
   private rows = new Map<string, Video>();
@@ -89,21 +107,9 @@ describe('video-engine youtube support', () => {
     expect(isYouTubeUrl('not a url')).toBe(false);
   });
 
-  test('youtube ingest without a resolver fails clearly', async () => {
-    const store = new MemoryStore();
-    const engine = new VideoStreamEngine({ storageDir: dir, signSecret: 's' }, store);
-    await engine.start();
-    expect(engine.ingestUrl({ tenantId: 't', sourceUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' })).rejects.toMatchObject(
-      { code: 'YOUTUBE_UNAVAILABLE' },
-    );
-  });
-
   test('youtube ingest resolves to a direct URL and adopts the title', async () => {
     const store = new MemoryStore();
-    const engine = new VideoStreamEngine(
-      { storageDir: dir, signSecret: 's', youtubeBin: fakeYtdlp(dir) },
-      store,
-    );
+    const engine = new VideoStreamEngine({ storageDir: dir, signSecret: 's' }, store);
     await engine.start();
 
     const video = await engine.ingestUrl({
@@ -113,6 +119,37 @@ describe('video-engine youtube support', () => {
     expect(video.sourceUrl).toBe('https://example.com/v.mp4');
     expect(video.title).toBe('Fake YT Title');
     expect(video.status).toBe('ready');
+    expect(video.source).toBe('URL');
+  });
+
+  test('youtube ingest accepts short / music links too', async () => {
+    const store = new MemoryStore();
+    const engine = new VideoStreamEngine({ storageDir: dir, signSecret: 's' }, store);
+    await engine.start();
+
+    const video = await engine.ingestUrl({ tenantId: 't', sourceUrl: 'https://youtu.be/g_Adcg6P1P0' });
+    expect(video.sourceUrl).toBe('https://example.com/v.mp4');
+    expect(video.status).toBe('ready');
+  });
+
+  test('youtube ingest fails clearly when the provider rejects the video', async () => {
+    const store = new MemoryStore();
+    const engine = new VideoStreamEngine({ storageDir: dir, signSecret: 's' }, store);
+    await engine.start();
+
+    expect(
+      engine.ingestUrl({ tenantId: 't', sourceUrl: 'https://youtube.com/watch?v=private' }),
+    ).rejects.toMatchObject({ code: 'YOUTUBE_RESOLVE' });
+  });
+
+  test('youtube ingest fails clearly when no playable stream is found', async () => {
+    const store = new MemoryStore();
+    const engine = new VideoStreamEngine({ storageDir: dir, signSecret: 's' }, store);
+    await engine.start();
+
+    expect(
+      engine.ingestUrl({ tenantId: 't', sourceUrl: 'https://youtube.com/watch?v=empty' }),
+    ).rejects.toMatchObject({ code: 'YOUTUBE_RESOLVE' });
   });
 
   afterAll(() => {

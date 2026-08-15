@@ -1,7 +1,7 @@
 {
   "name": "@exnest/video-engine",
   "version": "0.0.1",
-  "description": "Universal HLS video streaming machine for the exnest ecosystem — Bun + Elysia, zero runtime deps. Upload a file or give it a URL (Google Drive included) and get adaptive-bitrate HLS back. Ships Elysia and NestJS adapters.",
+  "description": "Universal HLS video streaming machine for the exnest ecosystem — Bun + Elysia, zero-dep core (one optional runtime dep: youtube-dl-exec for YouTube). Upload a file or give it a URL (Google Drive & YouTube included) and get adaptive-bitrate HLS back. Ships Elysia and NestJS adapters.",
   "type": "module",
   "license": "UNLICENSED",
   "private": true,
@@ -13,6 +13,12 @@
     "@nestjs/common": ">=8 <12",
     "elysia": ">=1.4"
   },
+  "dependencies": {
+    "youtube-dl-exec": "^3.1.4"
+  },
+  "trustedDependencies": [
+    "youtube-dl-exec"
+  ],
   "devDependencies": {
     "@nestjs/common": "^10.4.15",
     "@nestjs/core": "^11.2.1",

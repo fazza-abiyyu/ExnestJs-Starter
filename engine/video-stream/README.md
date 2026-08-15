@@ -32,8 +32,8 @@ infrastructure, and the package drops into any exnest app.
   headers, so you swap backend frameworks without touching the client.
 - **Google Drive as a first-class source** — share links are normalized to the direct
   download URL, the >~100 MB "Virus scan warning" page is auto-confirmed, and the filename
-  is picked from `Content-Disposition`. YouTube URLs resolve through an optional
-  `yt-dlp` (never vendored) to a direct media URL.
+  is picked from `Content-Disposition`. YouTube URLs resolve through the `youtube-dl-exec`
+  npm package (binary managed by the package) to a direct media URL.
 - **Stateless stream auth** — segments/raw are gated by an HMAC cookie (`vstream`) or a
   signed `?exp&sig=`, verified without a DB hit per request; the SSRF guard re-checks every
   redirect hop.
@@ -195,13 +195,14 @@ URLs are SSRF-guarded on every redirect hop (public IPs only). Drive share links
 normalized to the direct-download form, and the >~100 MB "Virus scan warning" page is
 auto-confirmed.
 
-### YouTube (optional)
+### YouTube
 
 YouTube URLs (`youtube.com`, `youtu.be`, `music.youtube.com`, …) are resolved to a direct,
-playable media URL through an optional `yt-dlp` binary — nothing is vendored. If `yt-dlp` is
-missing the ingest fails with `YOUTUBE_UNAVAILABLE`; if present, the resolved direct URL is
-stored as `sourceUrl` and the video's real title is adopted automatically, then the normal
-download/stream → HLS pipeline runs (progressive mode included).
+playable media URL through the `youtube-dl-exec` npm package — it installs and manages the
+underlying `yt-dlp` tool itself, no operator-side tooling required. If the package is missing
+ingest fails with `YOUTUBE_UNAVAILABLE`. The resolved direct URL is stored as `sourceUrl` and
+the video's real title is adopted automatically, then the normal download/stream → HLS
+pipeline runs (progressive mode included). Resolution is bounded by `proxyTimeoutMs`.
 
 ## Engine API
 
@@ -235,7 +236,8 @@ engine.verifyAccess(videoId, cookies, query);
 | `renditions` | `2 \| 3` | `3` | `3` = 1080p/720p/480p, `2` = 720p/480p |
 | `keepSource` | boolean | `true` | delete source after successful packaging |
 | `progressive` | boolean | `false` | stream a remote URL straight into ffmpeg (stdin) — HLS segments are served as soon as the first ones land, no full download first |
-| `youtubeBin` | string | `yt-dlp` | optional binary that resolves YouTube URLs to a direct media URL; when missing, YouTube ingests fail with `YOUTUBE_UNAVAILABLE` |
+
+YouTube resolution has no config: the engine uses the `youtube-dl-exec` dependency directly.
 
 Renditions: 1080p@5 Mbps / 720p@2.8 Mbps / 480p@1.4 Mbps, AAC 128 kbps stereo, GOP 48,
 4 s segments, VOD.

@@ -80,7 +80,6 @@ export class VideoStreamEngine {
   private readonly keepSource: boolean;
   private readonly progressive: boolean;
   private ffmpegAvailable = false;
-  private youtubeAvailable = false;
 
   constructor(config: VideoEngineConfig, store: VideoStore) {
     this.config = config;
@@ -109,7 +108,6 @@ export class VideoStreamEngine {
     if (this.config.ffmpegBin) {
       this.ffmpegAvailable = await detectBinary(this.config.ffmpegBin);
     }
-    this.youtubeAvailable = await detectBinary(this.config.youtubeBin ?? 'yt-dlp', '--version');
     await this.resumePending();
   }
 
@@ -201,13 +199,6 @@ export class VideoStreamEngine {
     let resolvedTitle: string | undefined;
 
     if (isYouTubeUrl(normalized)) {
-      if (!this.youtubeAvailable) {
-        throw new VideoEngineError(
-          'YOUTUBE_UNAVAILABLE',
-          'YouTube resolution requires yt-dlp (install it or set VIDEO_YOUTUBE_BIN)',
-          501,
-        );
-      }
       const resolved = await this.resolveYoutubeUrl(normalized);
       sourceUrl = resolved.url;
       resolvedTitle = resolved.title;
@@ -542,56 +533,92 @@ export class VideoStreamEngine {
     return direct.toString();
   }
 
-  /** Resolve a YouTube URL to a direct, playable media URL (and its title) via the
-   *  optional `yt-dlp` binary. Nothing is vendored — if yt-dlp is missing, ingest
-   *  fails with a clear `YOUTUBE_UNAVAILABLE` instead. */
-  private async resolveYoutubeUrl(rawUrl: string): Promise<{ url: string; title: string | undefined }> {
-    const bin = this.config.youtubeBin ?? 'yt-dlp';
+  /** Resolve a YouTube URL to a direct, playable media URL (and its title) using the
+   *  `youtube-dl-exec` npm package — it installs and manages the underlying `yt-dlp`
+   *  binary itself, so no operator-side tooling is needed. If the package is missing,
+   *  ingest fails with a clear `YOUTUBE_UNAVAILABLE`. */
+  private async resolveYoutubeUrl(
+    rawUrl: string,
+  ): Promise<{ url: string; title: string | undefined }> {
+    const { default: youtubedl } = await import('youtube-dl-exec').catch(() => {
+      throw new VideoEngineError(
+        'YOUTUBE_UNAVAILABLE',
+        'YouTube resolution requires the "youtube-dl-exec" package to be installed',
+        501,
+      );
+    });
     const timeoutMs = this.config.proxyTimeoutMs ?? 30_000;
-    const out = await this.runOutput(
-      bin,
-      ['-f', 'best[ext=mp4]/best', '--no-playlist', '--print', '%(title)s', '--get-url', rawUrl],
-      timeoutMs,
-    );
-    const lines = out
-      .trim()
-      .split(/\r?\n/)
-      .map((l) => l.trim())
-      .filter(Boolean);
-    if (lines.length === 0) {
-      throw new VideoEngineError('YOUTUBE_RESOLVE', 'No downloadable stream found for this video', 400);
+    const args = {
+      dumpSingleJson: true,
+      format: 'best[ext=mp4]/best',
+      noWarnings: true,
+      noCallHome: true,
+      noCheckCertificates: true,
+      noPlaylist: true,
+    };
+    const child: any = youtubedl.exec(rawUrl, args);
+    let raw: string;
+    try {
+      raw = await this.withTimeout(
+        async () => {
+          const res = await child;
+          const stdout: string = typeof res === 'string' ? res : (res?.stdout ?? '');
+          return stdout.split(/\r?\n/).find((line: string) => line.trim()) ?? '';
+        },
+        timeoutMs,
+        () => child.kill?.('SIGKILL'),
+      );
+    } catch (cause) {
+      throw new VideoEngineError(
+        'YOUTUBE_RESOLVE',
+        `Failed to resolve YouTube URL: ${cause instanceof Error ? cause.message : String(cause)}`,
+        400,
+      );
     }
-    const url = lines[lines.length - 1];
-    if (!/^https?:\/\//i.test(url)) {
-      throw new VideoEngineError('YOUTUBE_RESOLVE', `Unexpected resolver output: ${url}`, 400);
+    let out: { title?: string; url?: unknown; requested_formats?: Array<{ url?: unknown }> };
+    try {
+      out = JSON.parse(raw);
+    } catch {
+      throw new VideoEngineError(
+        'YOUTUBE_RESOLVE',
+        'Unexpected resolver output for this video',
+        400,
+      );
     }
-    return { url, title: lines.length > 1 ? lines[0] : undefined };
+    const direct =
+      typeof out.url === 'string'
+        ? out.url
+        : out.requested_formats?.find((f) => typeof f.url === 'string')?.url;
+    if (typeof direct !== 'string' || !/^https?:\/\//i.test(direct)) {
+      throw new VideoEngineError(
+        'YOUTUBE_RESOLVE',
+        'No downloadable stream found for this video',
+        400,
+      );
+    }
+    return { url: direct, title: out.title || undefined };
   }
 
-  private runOutput(bin: string, args: string[], timeoutMs: number): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const child = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'] });
-      let stdout = '';
-      let stderr = '';
+  private withTimeout<T>(
+    run: () => Promise<T>,
+    timeoutMs: number,
+    onTimeout?: () => void,
+  ): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
       const timer = setTimeout(() => {
-        child.kill('SIGKILL');
+        onTimeout?.();
         reject(new Error(`command timed out after ${timeoutMs}ms`));
       }, timeoutMs);
-      child.stdout?.on('data', (chunk: Buffer) => {
-        stdout += chunk.toString();
-      });
-      child.stderr?.on('data', (chunk: Buffer) => {
-        stderr += chunk.toString();
-      });
-      child.on('error', (err) => {
-        clearTimeout(timer);
-        reject(err);
-      });
-      child.on('close', (code) => {
-        clearTimeout(timer);
-        if (code === 0) resolve(stdout);
-        else reject(new Error(stderr.trim() || `command exited with code ${code}`));
-      });
+      run().then(
+        (value) => {
+          clearTimeout(timer);
+          resolve(value);
+        },
+        (err) => {
+          clearTimeout(timer);
+          reject(err instanceof Error ? err : new Error(String(err)));
+        },
+      );
     });
   }
 
