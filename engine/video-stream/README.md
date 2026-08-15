@@ -44,7 +44,8 @@ video-stream/                  # this package (engine/video-stream in the monore
 1. Copy the `video-stream/` folder into your project (or reference it from the monorepo).
 2. Copy the `Video` model from `prisma-model.prisma` into your Prisma schema and run
    `db:generate`.
-3. Construct the engine with a store:
+3. Construct the engine with a store. See `.env.example` for the full list of `VIDEO_*`
+   env vars the host app is expected to supply:
 
 ```ts
 import { VideoStreamEngine, PrismaVideoStore } from '@exnest/video-engine';
