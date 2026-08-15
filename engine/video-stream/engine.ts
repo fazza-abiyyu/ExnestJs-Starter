@@ -69,6 +69,7 @@ export class VideoStreamEngine {
   private readonly packager: Packager;
   private readonly renditionSpec: RenditionSpec[];
   private readonly keepSource: boolean;
+  private readonly progressive: boolean;
   private ffmpegAvailable = false;
 
   constructor(config: VideoEngineConfig, store: VideoStore) {
@@ -79,6 +80,7 @@ export class VideoStreamEngine {
     this.packager = new Packager(config.processSlots ?? 1, config.proxyTimeoutMs ?? 30000);
     this.renditionSpec = (config.renditions ?? 3) === 2 ? RENDITIONS_2 : RENDITIONS_3;
     this.keepSource = config.keepSource ?? true;
+    this.progressive = config.progressive ?? false;
   }
 
   get hasFfmpeg(): boolean {
@@ -114,6 +116,26 @@ export class VideoStreamEngine {
       throw new VideoEngineError('VIDEO_NOT_FOUND', 'Video not found', 404);
     }
     return video;
+  }
+
+  /** A video is playable once fully packaged, or (progressive only) while a remote URL is
+   *  still streaming through ffmpeg but at least one rendition playlist has landed. */
+  private usable(video: Video): boolean {
+    if (video.status === 'ready' && video.hlsReady) return true;
+    return (
+      this.progressive &&
+      video.status === 'processing' &&
+      video.source === 'URL' &&
+      this.hasAnyPlaylist(video)
+    );
+  }
+
+  private hasAnyPlaylist(video: Video): boolean {
+    const hls = videoHlsDir(this.videoRoot(video.id));
+    for (let i = 0; i < this.renditionSpec.length; i++) {
+      if (isFileAt(resolveInside(hls, String(i), 'index.m3u8'))) return true;
+    }
+    return false;
   }
 
   issueAccessCookie(videoId: string): string {
@@ -183,6 +205,10 @@ export class VideoStreamEngine {
       await this.store.update(id, { status: 'ready', hlsReady: false, readyAt: new Date() });
       return video;
     }
+    if (this.progressive) {
+      void this.streamPack(video);
+      return video;
+    }
     void this.downloadAndProcess(video);
     return video;
   }
@@ -211,11 +237,8 @@ export class VideoStreamEngine {
 
   async manifest(tenantId: string, id: string): Promise<string> {
     const video = await this.getRequired(tenantId, id);
-    if (!video.hlsReady) {
+    if (!this.usable(video)) {
       throw new VideoEngineError('VIDEO_NOT_READY', 'Video has not been packaged yet', 409);
-    }
-    if (!video.filePath) {
-      throw new VideoEngineError('VIDEO_NOT_READY', 'Video has no local packaging source', 409);
     }
 
     const hls = videoHlsDir(this.videoRoot(id));
@@ -243,7 +266,7 @@ export class VideoStreamEngine {
     options: { rangeHeader?: string; ifRange?: string; mimeType?: string },
   ): Promise<Response> {
     const video = await this.getRequired(tenantId, id);
-    if (!video.hlsReady || !video.filePath) {
+    if (!this.usable(video)) {
       throw new VideoEngineError('VIDEO_NOT_READY', 'Video has not been packaged yet', 409);
     }
 
@@ -282,6 +305,13 @@ export class VideoStreamEngine {
     await this.store.resetProcessing();
     const pending = await this.store.findByStatus('pending');
     for (const video of pending) {
+      if (video.source === 'URL' && !video.filePath) {
+        await this.store.update(video.id, {
+          status: 'failed',
+          errorMsg: 'interrupted progressive ingest; re-submit to recover',
+        });
+        continue;
+      }
       void this.processVideo(video);
     }
   }
@@ -335,6 +365,53 @@ export class VideoStreamEngine {
       throw new VideoEngineError('QUEUE_FULL', 'Ingest queue is full, try again later', 429);
     }
     void this.processVideo(video);
+  }
+
+  private async streamPack(video: Video): Promise<void> {
+    if (!video.sourceUrl) return;
+    try {
+      const { res } = await this.fetchGuarded(video.sourceUrl, this.config.proxyTimeoutMs ?? 30000);
+      if (!res.body) {
+        throw new VideoEngineError('EMPTY_SOURCE', 'Source returned no body', 400);
+      }
+      const root = this.videoRoot(video.id);
+      const hls = videoHlsDir(root);
+      await ensureDir(hls);
+      await this.store.update(video.id, { status: 'processing' });
+
+      const disposition = res.headers.get('content-disposition');
+      const dispositionName = disposition
+        ? /filename="?([^";]+)"?/i.exec(disposition)?.[1]
+        : undefined;
+      const fileName = sanitizeFileName(
+        dispositionName ?? new URL(video.sourceUrl).pathname.split('/').pop() ?? 'source.bin',
+      );
+
+      await this.packager.enqueue({
+        hlsDir: hls,
+        ffmpegBin: this.config.ffmpegBin ?? 'ffmpeg',
+        renditions: this.renditionSpec,
+        timeoutMs: this.config.proxyTimeoutMs ?? 30000,
+        stdin: res.body,
+        maxBytes: this.maxBytes,
+      });
+
+      await this.store.update(video.id, {
+        fileName,
+        mimeType: res.headers.get('content-type') ?? 'application/octet-stream',
+        status: 'ready',
+        hlsReady: true,
+        readyAt: new Date(),
+        errorMsg: null,
+        ...(video.title === video.sourceUrl ? { title: fileName } : {}),
+      });
+    } catch (err) {
+      await this.store.update(video.id, {
+        status: 'failed',
+        hlsReady: false,
+        errorMsg: errorMessage(err),
+      });
+    }
   }
 
   private async downloadAndProcess(video: Video): Promise<void> {

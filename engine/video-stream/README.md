@@ -225,9 +225,20 @@ engine.verifyAccess(videoId, cookies, query);
 | `proxyTimeoutMs` | number | `30_000` | per-hop fetch/ffmpeg timeout |
 | `renditions` | `2 \| 3` | `3` | `3` = 1080p/720p/480p, `2` = 720p/480p |
 | `keepSource` | boolean | `true` | delete source after successful packaging |
+| `progressive` | boolean | `false` | stream a remote URL straight into ffmpeg (stdin) — HLS segments are served as soon as the first ones land, no full download first |
 
 Renditions: 1080p@5 Mbps / 720p@2.8 Mbps / 480p@1.4 Mbps, AAC 128 kbps stereo, GOP 48,
 4 s segments, VOD.
+
+### Progressive mode
+
+With `progressive: true`, a URL ingest never waits for the full download: the response body is
+piped straight into ffmpeg on stdin (`-i pipe:0`) and HLS playlists/segments are published as
+soon as each 4 s chunk is encoded — `usable()` lets `manifest`/`segment` serve while the video
+is still in `processing`. The byte cap (`maxBytes`) kills the job if the source out-grows the
+limit; interrupted progressive rows are marked `failed` on restart (re-submit to recover), and
+non-progressive behavior is unchanged. Note: a piped input cannot be probed up front, so audio
+is assumed present for progressive jobs.
 
 ## Status lifecycle
 

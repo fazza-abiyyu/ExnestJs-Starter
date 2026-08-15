@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import { dirname } from 'node:path';
+import { Readable } from 'node:stream';
 
 export interface RenditionSpec {
   height: number;
@@ -21,11 +22,15 @@ export const RENDITIONS_2: RenditionSpec[] = [
 ];
 
 export interface PackageJob {
-  sourcePath: string;
+  sourcePath?: string;
   hlsDir: string;
   ffmpegBin: string;
   renditions: RenditionSpec[];
   timeoutMs?: number;
+  /** Progressive: feed ffmpeg from this stream instead of a local file. */
+  stdin?: ReadableStream<Uint8Array>;
+  /** Abort (kill ffmpeg) once more than this many bytes were pumped. */
+  maxBytes?: number;
 }
 
 function runCommand(bin: string, args: string[], cwd: string, timeoutMs: number): Promise<void> {
@@ -77,7 +82,11 @@ async function hasAudioStream(ffprobeBin: string, sourcePath: string): Promise<b
 
 function buildArgs(job: PackageJob, hasAudio: boolean): string[] {
   const count = job.renditions.length;
-  const args: string[] = ['-y', '-i', job.sourcePath];
+  const args: string[] = [
+    '-y',
+    '-i',
+    job.stdin ? 'pipe:0' : (job.sourcePath ?? 'pipe:0'),
+  ];
 
   for (let i = 0; i < count; i++) {
     args.push('-map', '0:v:0');
@@ -115,7 +124,37 @@ function buildArgs(job: PackageJob, hasAudio: boolean): string[] {
     '%v/segment_%05d.ts',
     '%v/index.m3u8',
   );
+  if (job.stdin) {
+    args.push('-hls_flags', 'temp_file+independent_segments');
+  }
   return args;
+}
+
+function pipeStreamInto(
+  child: ReturnType<typeof spawn>,
+  web: ReadableStream<Uint8Array>,
+  maxBytes: number | undefined,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const node = Readable.fromWeb(web as never);
+    const stdin = child.stdin;
+    let total = 0;
+    node.on('data', (chunk: Buffer) => {
+      total += chunk.byteLength;
+      if (maxBytes != null && total > maxBytes) {
+        node.destroy();
+        child.kill('SIGKILL');
+        reject(new Error(`payload exceeds ${maxBytes} bytes`));
+      }
+    });
+    node.on('error', (err) => {
+      child.kill('SIGKILL');
+      reject(err);
+    });
+    node.on('end', () => resolve());
+    if (stdin) node.pipe(stdin);
+    else node.resume();
+  });
 }
 
 export class Packager {
@@ -163,17 +202,18 @@ export class Packager {
   }): Promise<void> {
     this.running++;
     try {
-      const ffprobeBin =
-        item.job.ffmpegBin.endsWith('ffmpeg') || item.job.ffmpegBin.includes('ffmpeg')
-          ? item.job.ffmpegBin.replace(/ffmpeg$/i, 'ffprobe')
-          : `${item.job.ffmpegBin}-ffprobe`;
-      const hasAudio = await hasAudioStream(ffprobeBin, item.job.sourcePath);
-      await runCommand(
-        item.job.ffmpegBin,
-        buildArgs(item.job, hasAudio),
-        item.job.hlsDir,
-        this.timeoutMs || 60 * 60 * 1000,
-      );
+      const job = item.job;
+      const timeoutMs = this.timeoutMs || 60 * 60 * 1000;
+      if (job.stdin) {
+        await this.runProgressive(job, timeoutMs);
+      } else {
+        const ffprobeBin =
+          job.ffmpegBin.endsWith('ffmpeg') || job.ffmpegBin.includes('ffmpeg')
+            ? job.ffmpegBin.replace(/ffmpeg$/i, 'ffprobe')
+            : `${job.ffmpegBin}-ffprobe`;
+        const hasAudio = await hasAudioStream(ffprobeBin, job.sourcePath as string);
+        await runCommand(job.ffmpegBin, buildArgs(job, hasAudio), job.hlsDir, timeoutMs);
+      }
       item.resolve();
     } catch (err) {
       item.reject(err instanceof Error ? err : new Error(String(err)));
@@ -181,5 +221,42 @@ export class Packager {
       this.running--;
       this.pump();
     }
+  }
+
+  /** Stream a remote body straight through ffmpeg on stdin. Progressive inputs can't be
+   *  probed up-front, so audio is assumed present; the byte cap kills the job when the
+   *  source out-grows `maxBytes`. */
+  private async runProgressive(job: PackageJob, timeoutMs: number): Promise<void> {
+    const child = spawn(job.ffmpegBin, buildArgs(job, true), {
+      cwd: job.hlsDir,
+      stdio: ['pipe', 'inherit', 'pipe'],
+    });
+    let stderr = '';
+    const timer = setTimeout(() => {
+      child.kill('SIGKILL');
+    }, timeoutMs);
+
+    await new Promise<void>((resolve, reject) => {
+      let settled = false;
+      const settle = (err?: Error): void => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        if (err) reject(err);
+        else resolve();
+      };
+      child.on('error', (err) => settle(err));
+      child.stderr?.on('data', (chunk: Buffer) => {
+        stderr += chunk.toString();
+      });
+      child.on('close', (code) => {
+        if (code === 0) settle();
+        else settle(new Error(stderr.trim() || `command exited with code ${code}`));
+      });
+      const pump = pipeStreamInto(child, job.stdin as ReadableStream<Uint8Array>, job.maxBytes);
+      pump.catch((err) => {
+        settle(err instanceof Error ? err : new Error(String(err)));
+      });
+    });
   }
 }
