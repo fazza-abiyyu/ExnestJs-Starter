@@ -17,6 +17,7 @@ import {
   videoSourceDir,
 } from './internals/files.js';
 import { Packager, RENDITIONS_2, RENDITIONS_3, type RenditionSpec } from './internals/packager.js';
+import { fileExists, openLocal, writeStreamToFile, type LocalFile } from './internals/fileio.js';
 
 const M3U8 = 'application/vnd.apple.mpegurl';
 const TS = 'video/mp2t';
@@ -84,6 +85,7 @@ export class VideoStreamEngine {
   private readonly renditionSpec: RenditionSpec[];
   private readonly keepSource: boolean;
   private readonly progressive: boolean;
+  private readonly ytEnabled: boolean;
   private ffmpegAvailable = false;
 
   constructor(config: VideoEngineConfig, store: VideoStore) {
@@ -91,10 +93,14 @@ export class VideoStreamEngine {
     this.store = store;
     this.signer = new TokenSigner(config.signSecret, config.signTtlSeconds ?? 1800);
     this.guard = new SsrfGuard({ blockPrivate: true });
-    this.packager = new Packager(config.processSlots ?? 1, config.proxyTimeoutMs ?? 30000);
+    this.packager = new Packager(
+      config.processSlots ?? 1,
+      config.packagingTimeoutMs ?? config.proxyTimeoutMs ?? 30000,
+    );
     this.renditionSpec = (config.renditions ?? 3) === 2 ? RENDITIONS_2 : RENDITIONS_3;
     this.keepSource = config.keepSource ?? true;
     this.progressive = config.progressive ?? false;
+    this.ytEnabled = config.youtubeIngest ?? true;
   }
 
   get hasFfmpeg(): boolean {
@@ -154,6 +160,17 @@ export class VideoStreamEngine {
 
   issueAccessCookie(videoId: string): string {
     return this.signer.cookieValue(`vstream:${videoId}`);
+  }
+
+  issueStreamToken(videoId: string, ttlSeconds?: number): { exp: number; sig: string } {
+    return this.signer.sign(`vstream:${videoId}`, ttlSeconds);
+  }
+
+  signedStreamUrl(videoId: string, baseUrl: string, ttlSeconds?: number): string {
+    const { exp, sig } = this.issueStreamToken(videoId, ttlSeconds);
+    const base = baseUrl.replace(/\/+$/, '');
+    const sep = base.includes('?') ? '&' : '?';
+    return `${base}/${videoId}/stream/master.m3u8?exp=${exp}&sig=${sig}`;
   }
 
   verifyAccess(
@@ -304,11 +321,10 @@ export class VideoStreamEngine {
     }
     const contentType = decoded.endsWith('.m3u8') ? M3U8 : TS;
     const filePath = resolveInside(videoHlsDir(this.videoRoot(id)), decoded);
-    const file = Bun.file(filePath);
-    if (!(await file.exists())) {
+    if (!fileExists(filePath)) {
       throw new VideoEngineError('SEGMENT_NOT_FOUND', 'File not found', 404);
     }
-    return this.serveFile(file, options.rangeHeader, contentType);
+    return this.serveFile(openLocal(filePath), options.rangeHeader, contentType);
   }
 
   async raw(tenantId: string, id: string, rangeHeader?: string): Promise<Response> {
@@ -321,11 +337,10 @@ export class VideoStreamEngine {
     if (!video.filePath) {
       throw new VideoEngineError('VIDEO_NOT_READY', 'Video has no local source', 409);
     }
-    const file = Bun.file(video.filePath);
-    if (!(await file.exists())) {
+    if (!fileExists(video.filePath)) {
       throw new VideoEngineError('SOURCE_NOT_FOUND', 'Source file not found', 404);
     }
-    return this.serveFile(file, rangeHeader, video.mimeType || 'application/octet-stream');
+    return this.serveFile(openLocal(video.filePath), rangeHeader, video.mimeType || 'application/octet-stream');
   }
 
   async resumePending(): Promise<void> {
@@ -352,36 +367,7 @@ export class VideoStreamEngine {
     if (!stream) {
       throw new VideoEngineError('EMPTY_BODY', 'Request body is required', 400);
     }
-    const sink = Bun.file(filePath).writer();
-    const reader = stream.getReader();
-    let total = 0;
-    try {
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        total += value?.byteLength ?? 0;
-        if (maxBytes > 0 && total > maxBytes) {
-          throw new VideoEngineError(
-            'PAYLOAD_TOO_LARGE',
-            `Payload exceeds maximum size of ${maxBytes} bytes`,
-            413,
-          );
-        }
-        await sink.write(value);
-      }
-    } finally {
-      try {
-        if (typeof reader?.releaseLock === 'function') reader.releaseLock();
-      } catch {
-        // reader may not expose releaseLock on some runtimes
-      }
-      try {
-        await sink.end();
-      } catch {
-        // file may have been cleaned up by the caller
-      }
-    }
-    return total;
+    return writeStreamToFile(filePath, stream, maxBytes);
   }
 
   private async startPackaging(video: Video): Promise<void> {
@@ -419,7 +405,7 @@ export class VideoStreamEngine {
         hlsDir: hls,
         ffmpegBin: this.config.ffmpegBin ?? 'ffmpeg',
         renditions: this.renditionSpec,
-        timeoutMs: this.config.proxyTimeoutMs ?? 30000,
+        timeoutMs: this.config.packagingTimeoutMs ?? this.config.proxyTimeoutMs ?? 30000,
         stdin: res.body,
         maxBytes: this.maxBytes,
       });
@@ -446,6 +432,13 @@ export class VideoStreamEngine {
     if (!video.sourceUrl) return;
     try {
       if (isYouTubeUrl(video.sourceUrl)) {
+        if (!this.ytEnabled) {
+          throw new VideoEngineError(
+            'YOUTUBE_DISABLED',
+            'YouTube ingest is disabled by engine configuration',
+            403,
+          );
+        }
         await this.downloadYoutubeAndProcess(video);
         return;
       }
@@ -693,7 +686,7 @@ export class VideoStreamEngine {
     });
   }
 
-  private serveFile(file: BunFile, rangeHeader: string | undefined, contentType: string): Response {
+  private serveFile(file: LocalFile, rangeHeader: string | undefined, contentType: string): Response {
     const size = file.size;
     const parsed = parseRange(rangeHeader, size);
     const headers: Record<string, string> = {
@@ -710,7 +703,7 @@ export class VideoStreamEngine {
       const { start, end } = parsed.range;
       headers['Content-Range'] = `bytes ${start}-${end}/${size}`;
       headers['Content-Length'] = String(end - start + 1);
-      return new Response(file.slice(start, end + 1).stream(), { status: 206, headers });
+      return new Response(file.stream({ start, end }), { status: 206, headers });
     }
 
     headers['Content-Length'] = String(size);
@@ -755,13 +748,13 @@ export class VideoStreamEngine {
       const hls = videoHlsDir(this.videoRoot(video.id));
       await ensureDir(hls);
       try {
-        await this.packager.enqueue({
-          sourcePath: video.filePath!,
-          hlsDir: hls,
-          ffmpegBin: this.config.ffmpegBin ?? 'ffmpeg',
-          renditions: this.renditionSpec,
-          timeoutMs: this.config.proxyTimeoutMs ?? 30000,
-        });
+await this.packager.enqueue({
+        sourcePath: video.filePath!,
+        hlsDir: hls,
+        ffmpegBin: this.config.ffmpegBin ?? 'ffmpeg',
+        renditions: this.renditionSpec,
+        timeoutMs: this.config.packagingTimeoutMs ?? this.config.proxyTimeoutMs ?? 30000,
+      });
         await this.store.update(video.id, {
           status: 'ready',
           hlsReady: true,
@@ -788,5 +781,3 @@ export class VideoStreamEngine {
     }
   }
 }
-
-type BunFile = ReturnType<typeof Bun.file>;

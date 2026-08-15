@@ -10,8 +10,12 @@ export interface VideoEngineConfig {
   processSlots?: number;
   maxQueue?: number;
   proxyTimeoutMs?: number;
+/** Separate hard timeout for the ffmpeg packaging job (defaults to proxyTimeoutMs). */
+  packagingTimeoutMs?: number;
   renditions?: 2 | 3;
   keepSource?: boolean;
+/** Allow YouTube URLs as an ingest source (requires youtube-dl-exec). */
+  youtubeIngest?: boolean;
 /** Stream a remote URL straight into ffmpeg (stdin) so HLS segments are served as soon as
  *  the first ones land, instead of waiting for a full download + repackage (URL source only). */
   progressive?: boolean;

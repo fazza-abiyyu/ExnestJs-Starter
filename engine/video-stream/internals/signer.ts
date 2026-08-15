@@ -10,8 +10,8 @@ export class TokenSigner {
     private readonly ttlSeconds = 1800,
   ) {}
 
-  sign(resource: string): { exp: number; sig: string } {
-    const exp = Math.floor(Date.now() / 1000) + this.ttlSeconds;
+  sign(resource: string, ttlSeconds = this.ttlSeconds): { exp: number; sig: string } {
+    const exp = Math.floor(Date.now() / 1000) + ttlSeconds;
     return { exp, sig: hmac(this.secret, `${resource}:${exp}`) };
   }
 

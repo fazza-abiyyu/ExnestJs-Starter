@@ -8,3 +8,4 @@ export { Packager, RENDITIONS_2, RENDITIONS_3, type RenditionSpec, type PackageJ
 export { parseRange } from './internals/range.js';
 export { isPrivateAddress } from './internals/ssrf.js';
 export { resolveInside } from './internals/files.js';
+export type { LocalFile } from './internals/fileio.js';

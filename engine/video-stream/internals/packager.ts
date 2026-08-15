@@ -264,7 +264,7 @@ export class Packager {
     this.running++;
     try {
       const job = item.job;
-      const timeoutMs = this.timeoutMs || 60 * 60 * 1000;
+      const timeoutMs = job.timeoutMs ?? (this.timeoutMs || 60 * 60 * 1000);
       if (job.stdin) {
         await this.runProgressive(job, timeoutMs);
       } else {
