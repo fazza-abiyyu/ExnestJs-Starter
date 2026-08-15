@@ -18,6 +18,37 @@ URL** (`URL`, Google Drive included) — and it turns it into **adaptive-bitrate
 - **Static-file-light serving** — one small segment per request, never the whole video in
   memory.
 
+## Why this engine
+
+This is **not** a transcoding CLI, a SaaS gateway, or a media-server front-end — it is an
+in-process *HLS machine*: your videos are repackaged and served from your own
+infrastructure, and the package drops into any exnest app.
+
+- **Zero runtime deps in the kernel** — `engine.ts` only imports `node:*` + `Bun.file` and
+  spawns ffmpeg directly (argv arrays, never a shell). No ffmpeg-binding or HLS library to
+  vendor or break; the whole engine is a handful of plain TypeScript files.
+- **Dual adapters, byte-identical contract** — Elysia (`mountVideoEngine`) and NestJS
+  (`VideoEngineModule`) expose the same `{ value }` / `{ error }` envelope and the same
+  headers, so you swap backend frameworks without touching the client.
+- **Google Drive as a first-class source** — share links are normalized to the direct
+  download URL, the >~100 MB "Virus scan warning" page is auto-confirmed, and the filename
+  is picked from `Content-Disposition`.
+- **Stateless stream auth** — segments/raw are gated by an HMAC cookie (`vstream`) or a
+  signed `?exp&sig=`, verified without a DB hit per request; the SSRF guard re-checks every
+  redirect hop.
+- **Range-aware everywhere** — 206 / 416 / `if-range` for both segments and the raw source,
+  and `serveRemoteRaw` proxies `Range` straight to a URL source so a bare URL can be played
+  before it is even packaged.
+- **One ffmpeg pass → N renditions** (`-var_stream_map`, auto audio detection), a
+  multi-slot queue (`processSlots`, capped by `maxQueue` → 429), and crash healing on
+  restart (reset `processing`, re-pack `pending`).
+- **Economical by design** — `keepSource=false` deletes the source once HLS is ready
+  (~75% disk saved), `renditions: 2 | 3` trades quality for cost, `processSlots=1` throttles
+  CPU, and every operation is tenant-scoped (`x-tenant-id`).
+
+What it deliberately is not: live streaming, YouTube ingest (yt-dlp parked), or real-time
+WebRTC — the latter is `mediasoup` territory.
+
 ## Layout
 
 ```
@@ -31,8 +62,11 @@ video-stream/                  # this package (engine/video-stream in the monore
     ssrf.ts                    # URL/IP guard (blocks private/loopback/link-local/metadata)
     range.ts                   # HTTP Range parser (206 / 416)
     files.ts                   # path traversal guard + safe FS helpers
+    limiter.ts                 # sliding-window rate limiter (shared by adapters)
   adapters/
     elysia.mount.ts            # self-contained Elysia wiring (CORS, cookies, rate limit)
+    nest.controller.ts         # NestJS dynamic controller (same envelope/headers)
+    nest.module.ts             # VideoEngineModule.forRoot({ engine, apiKey, … })
     prisma.store.ts            # PrismaVideoStore
   prisma-model.prisma          # the Video model to copy into your schema
   *.spec.ts                    # unit + HTTP e2e tests (bun test)
