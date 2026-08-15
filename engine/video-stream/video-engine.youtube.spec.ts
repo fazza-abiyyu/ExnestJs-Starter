@@ -116,7 +116,7 @@ describe('video-engine youtube support', () => {
       tenantId: 't',
       sourceUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
     });
-    expect(video.sourceUrl).toBe('https://example.com/v.mp4');
+    expect(video.sourceUrl).toBe('https://www.youtube.com/watch?v=dQw4w9WgXcQ');
     expect(video.title).toBe('Fake YT Title');
     expect(video.status).toBe('ready');
     expect(video.source).toBe('URL');
@@ -128,7 +128,7 @@ describe('video-engine youtube support', () => {
     await engine.start();
 
     const video = await engine.ingestUrl({ tenantId: 't', sourceUrl: 'https://youtu.be/g_Adcg6P1P0' });
-    expect(video.sourceUrl).toBe('https://example.com/v.mp4');
+    expect(video.sourceUrl).toBe('https://youtu.be/g_Adcg6P1P0');
     expect(video.status).toBe('ready');
   });
 

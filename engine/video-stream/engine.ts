@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto';
+import { readdirSync, statSync } from 'node:fs';
+import { join } from 'node:path';
 import { spawn } from 'node:child_process';
 import { VideoEngineError, type Video, type VideoStore, type VideoEngineConfig } from './types.js';
 import { TokenSigner } from './internals/signer.js';
@@ -200,7 +202,6 @@ export class VideoStreamEngine {
 
     if (isYouTubeUrl(normalized)) {
       const resolved = await this.resolveYoutubeUrl(normalized);
-      sourceUrl = resolved.url;
       resolvedTitle = resolved.title;
     }
 
@@ -441,6 +442,10 @@ export class VideoStreamEngine {
   private async downloadAndProcess(video: Video): Promise<void> {
     if (!video.sourceUrl) return;
     try {
+      if (isYouTubeUrl(video.sourceUrl)) {
+        await this.downloadYoutubeAndProcess(video);
+        return;
+      }
       const { res } = await this.fetchGuarded(video.sourceUrl, this.config.proxyTimeoutMs ?? 30000);
       if (!res.body) {
         throw new VideoEngineError('EMPTY_SOURCE', 'Source returned no body', 400);
@@ -472,6 +477,67 @@ export class VideoStreamEngine {
         errorMsg: errorMessage(err),
       });
     }
+  }
+
+  private async downloadYoutubeAndProcess(video: Video): Promise<void> {
+    const { default: youtubedl } = await import('youtube-dl-exec').catch(() => {
+      throw new VideoEngineError(
+        'YOUTUBE_UNAVAILABLE',
+        'YouTube download requires the "youtube-dl-exec" package to be installed',
+        501,
+      );
+    });
+    if (!video.sourceUrl) return;
+    const timeoutMs = Math.max(this.config.proxyTimeoutMs ?? 30000, 10 * 60_000);
+    const root = this.videoRoot(video.id);
+    const sourceDir = videoSourceDir(root);
+    await ensureDir(sourceDir);
+    const destTemplate = `${join(sourceDir, 'source')}.%(ext)s`;
+    const child = youtubedl.exec(video.sourceUrl, {
+      format: 'best[ext=mp4]/best',
+      output: destTemplate,
+      noPart: true,
+      noWarnings: true,
+      callHome: false,
+      noCheckCertificates: true,
+      noPlaylist: true,
+      jsRuntimes: 'node',
+    });
+    try {
+      await this.withTimeout(async () => {
+        const res = await child;
+        if (res.exitCode !== 0) {
+          throw new VideoEngineError(
+            'YOUTUBE_DOWNLOAD',
+            `Download failed: ${String(res.stderr ?? '')
+              .trim()
+              .slice(0, 400)}`,
+            400,
+          );
+        }
+      }, timeoutMs, () => child.kill?.('SIGKILL'));
+    } catch (cause) {
+      throw new VideoEngineError(
+        'YOUTUBE_DOWNLOAD',
+        `Failed to download YouTube video: ${cause instanceof Error ? cause.message : String(cause)}`,
+        400,
+      );
+    }
+    const produced = readdirSync(sourceDir).find(
+      (name) => name.startsWith('source.') && !name.endsWith('.part'),
+    );
+    if (!produced) {
+      throw new VideoEngineError('YOUTUBE_DOWNLOAD', 'Downloaded file not found', 400);
+    }
+    const filePath = join(sourceDir, produced);
+    const sizeBytes = statSync(filePath).size;
+    const updated = await this.store.update(video.id, {
+      fileName: produced,
+      filePath,
+      sizeBytes,
+      mimeType: 'video/mp4',
+    });
+    await this.processVideo(updated);
   }
 
   private async fetchGuarded(
@@ -533,9 +599,10 @@ export class VideoStreamEngine {
     return direct.toString();
   }
 
-  /** Resolve a YouTube URL to a direct, playable media URL (and its title) using the
-   *  `youtube-dl-exec` npm package — it installs and manages the underlying `yt-dlp`
-   *  binary itself, so no operator-side tooling is needed. If the package is missing,
+  /** Validate a YouTube URL is playable and adopt its title using the `youtube-dl-exec`
+   *  npm package — it installs and manages the underlying `yt-dlp` binary itself, so no
+   *  operator-side tooling is needed. The original URL is kept as `sourceUrl` and the media
+   *  is downloaded later (also via the library) before packaging. If the package is missing,
    *  ingest fails with a clear `YOUTUBE_UNAVAILABLE`. */
   private async resolveYoutubeUrl(
     rawUrl: string,
@@ -552,9 +619,10 @@ export class VideoStreamEngine {
       dumpSingleJson: true,
       format: 'best[ext=mp4]/best',
       noWarnings: true,
-      noCallHome: true,
+      callHome: false,
       noCheckCertificates: true,
       noPlaylist: true,
+      jsRuntimes: 'node' as const,
     };
     const child: any = youtubedl.exec(rawUrl, args);
     let raw: string;

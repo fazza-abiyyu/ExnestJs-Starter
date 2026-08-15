@@ -197,12 +197,14 @@ auto-confirmed.
 
 ### YouTube
 
-YouTube URLs (`youtube.com`, `youtu.be`, `music.youtube.com`, …) are resolved to a direct,
-playable media URL through the `youtube-dl-exec` npm package — it installs and manages the
-underlying `yt-dlp` tool itself, no operator-side tooling required. If the package is missing
-ingest fails with `YOUTUBE_UNAVAILABLE`. The resolved direct URL is stored as `sourceUrl` and
-the video's real title is adopted automatically, then the normal download/stream → HLS
-pipeline runs (progressive mode included). Resolution is bounded by `proxyTimeoutMs`.
+YouTube URLs (`youtube.com`, `youtu.be`, `music.youtube.com`, …) are validated and downloaded
+through the `youtube-dl-exec` npm package — it installs and manages the underlying `yt-dlp` tool
+itself, no operator-side tooling required. If the package is missing, ingest fails with
+`YOUTUBE_UNAVAILABLE`. The original URL is kept as `sourceUrl` and the video's real title is
+adopted automatically; the media is then downloaded (also via the library) before the normal
+→ HLS pipeline runs. YouTube jobs need a JavaScript runtime on `PATH` (Node, Deno, or Bun via
+`--js-runtimes`) so `yt-dlp` can solve YouTube's signature/n challenge — without one, download
+fails with HTTP 403. Resolution and packaging are bounded by `proxyTimeoutMs`.
 
 ## Engine API
 
@@ -237,7 +239,8 @@ engine.verifyAccess(videoId, cookies, query);
 | `keepSource` | boolean | `true` | delete source after successful packaging |
 | `progressive` | boolean | `false` | stream a remote URL straight into ffmpeg (stdin) — HLS segments are served as soon as the first ones land, no full download first |
 
-YouTube resolution has no config: the engine uses the `youtube-dl-exec` dependency directly.
+YouTube handling has no config: the engine uses the `youtube-dl-exec` dependency directly
+(requires a JavaScript runtime on `PATH` for downloads, see the YouTube section above).
 
 Renditions: 1080p@5 Mbps / 720p@2.8 Mbps / 480p@1.4 Mbps, AAC 128 kbps stereo, GOP 48,
 4 s segments, VOD.
