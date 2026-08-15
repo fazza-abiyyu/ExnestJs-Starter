@@ -23,6 +23,9 @@ const TS = 'video/mp2t';
 
 const DRIVE_CONFIRM_FIELDS = ['id', 'export', 'confirm', 'uuid'] as const;
 
+const YT_FORMAT =
+  'bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=1080]+bestaudio/best[ext=mp4]/best';
+
 function driveConfirmUrl(html: string, baseUrl: string): string | null {
   if (!/<input[^>]*name="confirm"/i.test(html)) return null;
   const action =
@@ -494,7 +497,7 @@ export class VideoStreamEngine {
     await ensureDir(sourceDir);
     const destTemplate = `${join(sourceDir, 'source')}.%(ext)s`;
     const child = youtubedl.exec(video.sourceUrl, {
-      format: 'best[ext=mp4]/best',
+      format: YT_FORMAT,
       output: destTemplate,
       noPart: true,
       noWarnings: true,
@@ -617,7 +620,7 @@ export class VideoStreamEngine {
     const timeoutMs = this.config.proxyTimeoutMs ?? 30_000;
     const args = {
       dumpSingleJson: true,
-      format: 'best[ext=mp4]/best',
+      format: YT_FORMAT,
       noWarnings: true,
       callHome: false,
       noCheckCertificates: true,
