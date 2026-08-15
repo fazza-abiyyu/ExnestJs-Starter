@@ -10,15 +10,18 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
     },
     "./nest": {
       "types": "./dist/nest.d.ts",
-      "import": "./dist/nest.js"
+      "import": "./dist/nest.js",
+      "default": "./dist/nest.js"
     },
     "./elysia": {
       "types": "./dist/elysia.d.ts",
-      "import": "./dist/elysia.js"
+      "import": "./dist/elysia.js",
+      "default": "./dist/elysia.js"
     }
   },
   "files": [
