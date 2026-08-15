@@ -89,6 +89,38 @@ The adapter is **self-contained** — it returns (and errors with) a simple
 own CORS + rate limiting, so it never depends on the host's OData/exception plumbing.
 Non-Elysia hosts just call the `engine.*` methods from their own controllers.
 
+## NestJS adapter
+
+Same routes, same envelope, same headers. Mount it as a feature module:
+
+```ts
+import { Module } from '@nestjs/common';
+import { VideoEngineModule } from '@exnest/video-engine';
+
+@Module({
+  imports: [
+    VideoEngineModule.forRoot({
+      engine,
+      apiKey: process.env.VIDEO_API_KEY!, // required for create/list/update/delete
+      corsOrigin: '*',
+      basePath: '/api/v1/videos',
+      maxIngestPerTenantMinute: 10,        // 0 = unlimited
+    }),
+  ],
+})
+export class VideoModule {}
+```
+
+Notes:
+- The controller is built by `createVideoEngineController(options)` (exported) and registered
+  dynamically by `VideoEngineModule.forRoot(...)`; require `@nestjs/common >=8 <12` (peer dep).
+- Platform: Express (`@nestjs/platform-express`). Streaming segments/raw pipe the engine's web
+  `Response` into the express `res` via `node:stream`; JSON ingest uses `@Body()` so the host's
+  body parser must handle `application/json`, file ingest reads the raw request stream.
+- The engine itself is Bun-first (`Bun.file`, web streams) — run the Nest app with `bun` or keep
+  `raw`/URL-only features on Node. Stream access, packages, GDrive, SSRF, rate-limit are shared
+  kernel code, identical to the Elysia adapter.
+
 ## HTTP routes (Elysia adapter)
 
 `x-tenant-id` scopes every operation (default: `default-tenant`).
@@ -186,9 +218,7 @@ and re-packs `pending` rows, so restarts heal interrupted work. One ffmpeg runs 
 ## Testing
 
 ```bash
-bun test                      # unit + e2e (MemoryStore, no DB needed)
-bunx tsc --noEmit -p tsconfig.json   # typecheck
+bun install                     # devDeps: @nestjs/common, bun-types, elysia, …
+bun test                        # kernel unit + Elysia e2e + Nest adapter (MemoryStore, no DB)
+bunx tsc --noEmit -p tsconfig.json     # typecheck
 ```
-
-To run inside the monorepo without installing: symlink `node_modules` to
-`packages/elysia/node_modules`.

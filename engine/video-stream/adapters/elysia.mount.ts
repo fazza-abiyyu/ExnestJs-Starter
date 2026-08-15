@@ -1,5 +1,6 @@
 import { VideoEngineError, type Video } from '../types.js';
 import { VideoStreamEngine } from '../engine.js';
+import { SlidingWindowLimiter } from '../internals/limiter.js';
 
 const M3U8 = 'application/vnd.apple.mpegurl';
 
@@ -74,28 +75,6 @@ function parseCookies(cookieHeader: string | undefined): Record<string, string> 
     if (idx > 0) out[part.slice(0, idx).trim()] = part.slice(idx + 1).trim();
   }
   return out;
-}
-
-class SlidingWindowLimiter {
-  private readonly hits = new Map<string, number[]>();
-
-  constructor(
-    private readonly max: number,
-    private readonly windowMs = 60_000,
-  ) {}
-
-  tryAcquire(key: string): boolean {
-    if (this.max <= 0) return true;
-    const now = Date.now();
-    const recent = (this.hits.get(key) ?? []).filter((t) => now - t < this.windowMs);
-    if (recent.length >= this.max) {
-      this.hits.set(key, recent);
-      return false;
-    }
-    recent.push(now);
-    this.hits.set(key, recent);
-    return true;
-  }
 }
 
 type MountCtx = {
