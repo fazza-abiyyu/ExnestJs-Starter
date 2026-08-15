@@ -12,9 +12,12 @@ export interface VideoEngineConfig {
   proxyTimeoutMs?: number;
   renditions?: 2 | 3;
   keepSource?: boolean;
-  /** Stream a remote URL straight into ffmpeg (stdin) so HLS segments are served as soon as
-   *  the first ones land, instead of waiting for a full download + repackage (URL source only). */
+/** Stream a remote URL straight into ffmpeg (stdin) so HLS segments are served as soon as
+ *  the first ones land, instead of waiting for a full download + repackage (URL source only). */
   progressive?: boolean;
+  /** Optional `yt-dlp` binary used to resolve YouTube URLs to a direct media URL. Defaults
+   *  to `yt-dlp`; when missing, YouTube ingests fail with `YOUTUBE_UNAVAILABLE`. */
+  youtubeBin?: string;
 }
 
 export interface Video {

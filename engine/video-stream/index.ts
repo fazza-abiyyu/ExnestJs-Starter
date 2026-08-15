@@ -1,5 +1,5 @@
 export * from './types.js';
-export { VideoStreamEngine } from './engine.js';
+export { VideoStreamEngine, isYouTubeUrl } from './engine.js';
 export { PrismaVideoStore } from './adapters/prisma.store.js';
 export { mountVideoEngine } from './adapters/elysia.mount.js';
 export { createVideoEngineController, type NestVideoEngineOptions } from './adapters/nest.controller.js';

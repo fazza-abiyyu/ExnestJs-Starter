@@ -42,12 +42,21 @@ function driveConfirmUrl(html: string, baseUrl: string): string | null {
   return url.toString();
 }
 
-function detectBinary(bin: string): Promise<boolean> {
+function detectBinary(bin: string, versionArg = '-version'): Promise<boolean> {
   return new Promise((resolve) => {
-    const child = spawn(bin, ['-version']);
+    const child = spawn(bin, [versionArg]);
     child.on('error', () => resolve(false));
     child.on('close', (code) => resolve(code === 0));
   });
+}
+
+export function isYouTubeUrl(rawUrl: string): boolean {
+  try {
+    const host = new URL(rawUrl).hostname.toLowerCase();
+    return host === 'youtu.be' || host === 'youtube.com' || host.endsWith('.youtube.com');
+  } catch {
+    return false;
+  }
 }
 
 function errorMessage(err: unknown): string {
@@ -71,6 +80,7 @@ export class VideoStreamEngine {
   private readonly keepSource: boolean;
   private readonly progressive: boolean;
   private ffmpegAvailable = false;
+  private youtubeAvailable = false;
 
   constructor(config: VideoEngineConfig, store: VideoStore) {
     this.config = config;
@@ -99,6 +109,7 @@ export class VideoStreamEngine {
     if (this.config.ffmpegBin) {
       this.ffmpegAvailable = await detectBinary(this.config.ffmpegBin);
     }
+    this.youtubeAvailable = await detectBinary(this.config.youtubeBin ?? 'yt-dlp', '--version');
     await this.resumePending();
   }
 
@@ -185,14 +196,30 @@ export class VideoStreamEngine {
   }
 
   async ingestUrl(input: { tenantId: string; title?: string; sourceUrl: string }): Promise<Video> {
-    const sourceUrl = this.normalizeSourceUrl(input.sourceUrl);
+    const normalized = this.normalizeSourceUrl(input.sourceUrl);
+    let sourceUrl = normalized;
+    let resolvedTitle: string | undefined;
+
+    if (isYouTubeUrl(normalized)) {
+      if (!this.youtubeAvailable) {
+        throw new VideoEngineError(
+          'YOUTUBE_UNAVAILABLE',
+          'YouTube resolution requires yt-dlp (install it or set VIDEO_YOUTUBE_BIN)',
+          501,
+        );
+      }
+      const resolved = await this.resolveYoutubeUrl(normalized);
+      sourceUrl = resolved.url;
+      resolvedTitle = resolved.title;
+    }
+
     await this.guard.assertSafeUrl(sourceUrl);
 
     const id = randomUUID();
     const video = await this.store.create({
       id,
       tenantId: input.tenantId,
-      title: input.title ?? sourceUrl,
+      title: input.title ?? normalized,
       source: 'URL',
       sourceUrl,
       fileName: null,
@@ -201,16 +228,22 @@ export class VideoStreamEngine {
       sizeBytes: 0,
     });
 
+    let current = video;
+    if (resolvedTitle) {
+      const updated = await this.store.update(id, { title: resolvedTitle });
+      current = (await this.store.get(input.tenantId, id)) ?? updated;
+    }
+
     if (!this.ffmpegAvailable) {
       await this.store.update(id, { status: 'ready', hlsReady: false, readyAt: new Date() });
-      return video;
+      return (await this.store.get(input.tenantId, id)) ?? current;
     }
     if (this.progressive) {
-      void this.streamPack(video);
-      return video;
+      void this.streamPack(current);
+      return current;
     }
-    void this.downloadAndProcess(video);
-    return video;
+    void this.downloadAndProcess(current);
+    return current;
   }
 
   async status(tenantId: string, id: string): Promise<Video> {
@@ -507,6 +540,59 @@ export class VideoStreamEngine {
     direct.searchParams.set('id', match[1]);
     direct.searchParams.set('export', 'download');
     return direct.toString();
+  }
+
+  /** Resolve a YouTube URL to a direct, playable media URL (and its title) via the
+   *  optional `yt-dlp` binary. Nothing is vendored — if yt-dlp is missing, ingest
+   *  fails with a clear `YOUTUBE_UNAVAILABLE` instead. */
+  private async resolveYoutubeUrl(rawUrl: string): Promise<{ url: string; title: string | undefined }> {
+    const bin = this.config.youtubeBin ?? 'yt-dlp';
+    const timeoutMs = this.config.proxyTimeoutMs ?? 30_000;
+    const out = await this.runOutput(
+      bin,
+      ['-f', 'best[ext=mp4]/best', '--no-playlist', '--print', '%(title)s', '--get-url', rawUrl],
+      timeoutMs,
+    );
+    const lines = out
+      .trim()
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter(Boolean);
+    if (lines.length === 0) {
+      throw new VideoEngineError('YOUTUBE_RESOLVE', 'No downloadable stream found for this video', 400);
+    }
+    const url = lines[lines.length - 1];
+    if (!/^https?:\/\//i.test(url)) {
+      throw new VideoEngineError('YOUTUBE_RESOLVE', `Unexpected resolver output: ${url}`, 400);
+    }
+    return { url, title: lines.length > 1 ? lines[0] : undefined };
+  }
+
+  private runOutput(bin: string, args: string[], timeoutMs: number): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const child = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+      let stdout = '';
+      let stderr = '';
+      const timer = setTimeout(() => {
+        child.kill('SIGKILL');
+        reject(new Error(`command timed out after ${timeoutMs}ms`));
+      }, timeoutMs);
+      child.stdout?.on('data', (chunk: Buffer) => {
+        stdout += chunk.toString();
+      });
+      child.stderr?.on('data', (chunk: Buffer) => {
+        stderr += chunk.toString();
+      });
+      child.on('error', (err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
+      child.on('close', (code) => {
+        clearTimeout(timer);
+        if (code === 0) resolve(stdout);
+        else reject(new Error(stderr.trim() || `command exited with code ${code}`));
+      });
+    });
   }
 
   private serveFile(file: BunFile, rangeHeader: string | undefined, contentType: string): Response {
