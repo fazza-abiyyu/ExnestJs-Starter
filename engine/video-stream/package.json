@@ -1,0 +1,15 @@
+{
+  "name": "@exnest/video-engine",
+  "version": "0.0.1",
+  "description": "Universal HLS video streaming machine for the exnest ecosystem — Bun + Elysia, zero runtime deps. Upload a file or give it a URL (Google Drive included) and get adaptive-bitrate HLS back.",
+  "type": "module",
+  "license": "UNLICENSED",
+  "private": true,
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "bunx tsc --noEmit -p tsconfig.json"
+  },
+  "peerDependencies": {
+    "elysia": ">=1.4"
+  }
+}

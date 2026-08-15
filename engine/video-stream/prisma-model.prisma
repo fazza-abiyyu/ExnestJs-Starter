@@ -1,0 +1,20 @@
+model Video {
+  id        String   @id @default(uuid())
+  tenantId  String
+  title     String
+  source    String // "FILE" | "URL"
+  sourceUrl String?
+  fileName  String?
+  filePath  String?
+  mimeType  String
+  sizeBytes Int
+  status    String   @default("pending") // pending | processing | ready | failed
+  attempt   Int      @default(0)
+  hlsReady  Boolean  @default(false)
+  readyAt   DateTime?
+  errorMsg  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId])
+}
