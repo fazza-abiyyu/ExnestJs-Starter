@@ -1,5 +1,4 @@
 import { spawn } from 'node:child_process';
-import { dirname } from 'node:path';
 import { Readable } from 'node:stream';
 
 export interface RenditionSpec {
@@ -59,44 +58,108 @@ function runCommand(bin: string, args: string[], cwd: string, timeoutMs: number)
   });
 }
 
-async function hasAudioStream(ffprobeBin: string, sourcePath: string): Promise<boolean> {
-  return runCommand(
-    ffprobeBin,
-    [
-      '-v',
-      'error',
-      '-select_streams',
-      'a:0',
-      '-show_entries',
-      'stream=index',
-      '-of',
-      'csv=p=0',
-      sourcePath,
-    ],
-    dirname(sourcePath),
-    15000,
-  )
-    .then(() => true)
-    .catch(() => false);
+export interface SourceMeta {
+  hasAudio: boolean;
+  vcodec: string;
+  width: number;
+  height: number;
 }
 
-function buildArgs(job: PackageJob, hasAudio: boolean): string[] {
+async function probeSource(ffprobeBin: string, sourcePath: string): Promise<SourceMeta> {
+  const probe = new Promise<string>((resolve, reject) => {
+    const child: ReturnType<typeof spawn> = spawn(
+      ffprobeBin,
+      [
+        '-v',
+        'error',
+        '-show_streams',
+        '-show_entries',
+        'stream=index,codec_type,codec_name,width,height',
+        '-of',
+        'json',
+        sourcePath,
+      ],
+      { stdio: ['ignore', 'ignore', 'pipe'] },
+    );
+    let out = '';
+    let err = '';
+    child.stdout?.on('data', (chunk: Buffer) => (out += chunk.toString()));
+    child.stderr?.on('data', (chunk: Buffer) => (err += chunk.toString()));
+    child.on('error', reject);
+    child.on('close', (code) => {
+      if (code === 0) resolve(out);
+      else reject(new Error(err.trim() || `ffprobe exited with code ${code}`));
+    });
+  });
+  const parsed = JSON.parse(await probe) as {
+    streams?: Array<{
+      index: number;
+      codec_type?: string;
+      codec_name?: string;
+      width?: number;
+      height?: number;
+    }>;
+  };
+  const streams = parsed.streams ?? [];
+  const video = streams.find((s) => s.codec_type === 'video');
+  const audio = streams.find((s) => s.codec_type === 'audio');
+  return {
+    hasAudio: Boolean(audio),
+    vcodec: video?.codec_name ?? '',
+    width: video?.width ?? 0,
+    height: video?.height ?? 0,
+  };
+}
+
+function buildArgs(job: PackageJob, meta: SourceMeta): string[] {
   const count = job.renditions.length;
+  const hasAudio = meta.hasAudio;
   const args: string[] = [
     '-y',
     '-i',
     job.stdin ? 'pipe:0' : (job.sourcePath ?? 'pipe:0'),
   ];
 
-  for (let i = 0; i < count; i++) {
-    args.push('-map', '0:v:0');
-    if (hasAudio) args.push('-map', '0:a:0');
+  const copyIndex =
+    !job.stdin &&
+    meta.vcodec.toLowerCase().startsWith('avc') &&
+    meta.height > 0 &&
+    job.renditions[0].height === meta.height
+      ? 0
+      : -1;
+
+  const filters: string[] = [];
+  const videoLabels: string[] = [];
+  job.renditions.forEach((r, i) => {
+    if (i === copyIndex) {
+      videoLabels.push('0:v:0');
+      return;
+    }
+    const label = `v${i}`;
+    videoLabels.push(`[${label}]`);
+    filters.push(`[0:v:0]scale=-2:${r.height},fps=30[${label}]`);
+  });
+  if (filters.length > 0) {
+    args.push('-filter_complex', filters.join(';'));
   }
 
-  args.push('-c:v', 'libx264', '-preset', 'veryfast', '-g', '48', '-sc_threshold', '0');
-  if (hasAudio) args.push('-c:a', 'aac', '-b:a', '128k', '-ac', '2');
+  job.renditions.forEach((r, i) => {
+    args.push('-map', videoLabels[i]);
+    if (hasAudio) args.push('-map', '0:a:0');
+  });
+
+  job.renditions.forEach((_, i) => {
+    args.push(`-c:v:${i}`, i === copyIndex ? 'copy' : 'libx264');
+    if (hasAudio) args.push(`-c:a:${i}`, i === copyIndex ? 'copy' : 'aac');
+  });
+  args.push('-preset', 'veryfast', '-g', '48', '-sc_threshold', '0', '-threads', '3');
+  if (hasAudio) {
+    args.push('-ac', '2');
+    for (let i = 0; i < count; i++) args.push(`-b:a:${i}`, '128k');
+  }
 
   job.renditions.forEach((r, i) => {
+    if (i === copyIndex) return;
     args.push(
       `-b:v:${i}`,
       `${r.bandwidth}k`,
@@ -104,13 +167,11 @@ function buildArgs(job: PackageJob, hasAudio: boolean): string[] {
       `${r.maxrate}k`,
       `-bufsize:v:${i}`,
       `${r.bufsize}k`,
-      `-vf:v:${i}`,
-      `scale=-2:${r.height}`,
     );
   });
 
   const groups = job.renditions.map((_, i) => (hasAudio ? `v:${i},a:${i}` : `v:${i}`));
-  args.push('-var_stream_map', groups.join(' '));
+  args.push('-var_stream_map', groups.join(' '), '-max_muxing_queue_size', '1024');
   args.push(
     '-master_pl_name',
     'master.m3u8',
@@ -211,8 +272,13 @@ export class Packager {
           job.ffmpegBin.endsWith('ffmpeg') || job.ffmpegBin.includes('ffmpeg')
             ? job.ffmpegBin.replace(/ffmpeg$/i, 'ffprobe')
             : `${job.ffmpegBin}-ffprobe`;
-        const hasAudio = await hasAudioStream(ffprobeBin, job.sourcePath as string);
-        await runCommand(job.ffmpegBin, buildArgs(job, hasAudio), job.hlsDir, timeoutMs);
+        const meta = await probeSource(ffprobeBin, job.sourcePath as string).catch(() => ({
+          hasAudio: false,
+          vcodec: '',
+          width: 0,
+          height: 0,
+        }));
+        await runCommand(job.ffmpegBin, buildArgs(job, meta), job.hlsDir, timeoutMs);
       }
       item.resolve();
     } catch (err) {
@@ -227,10 +293,14 @@ export class Packager {
    *  probed up-front, so audio is assumed present; the byte cap kills the job when the
    *  source out-grows `maxBytes`. */
   private async runProgressive(job: PackageJob, timeoutMs: number): Promise<void> {
-    const child = spawn(job.ffmpegBin, buildArgs(job, true), {
-      cwd: job.hlsDir,
-      stdio: ['pipe', 'inherit', 'pipe'],
-    });
+    const child = spawn(
+      job.ffmpegBin,
+      buildArgs(job, { hasAudio: true, vcodec: '', width: 0, height: 0 }),
+      {
+        cwd: job.hlsDir,
+        stdio: ['pipe', 'inherit', 'pipe'],
+      },
+    );
     let stderr = '';
     const timer = setTimeout(() => {
       child.kill('SIGKILL');

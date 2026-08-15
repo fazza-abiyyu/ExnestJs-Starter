@@ -24,7 +24,7 @@ const TS = 'video/mp2t';
 const DRIVE_CONFIRM_FIELDS = ['id', 'export', 'confirm', 'uuid'] as const;
 
 const YT_FORMAT =
-  'bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=1080]+bestaudio/best[ext=mp4]/best';
+  'bestvideo[height<=1080][ext=mp4][vcodec^=avc1]+bestaudio[ext=m4a]/bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=1080][ext=mp4]/best[ext=mp4]/best';
 
 function driveConfirmUrl(html: string, baseUrl: string): string | null {
   if (!/<input[^>]*name="confirm"/i.test(html)) return null;
