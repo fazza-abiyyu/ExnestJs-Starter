@@ -1,0 +1,24 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "module": "NodeNext",
+    "moduleResolution": "node16",
+    "outDir": "./dist",
+    "rootDir": "./",
+    "declaration": true,
+    "sourceMap": false,
+    "incremental": false,
+    "types": ["node"]
+  },
+  "include": [
+    "index.ts",
+    "nest.ts",
+    "elysia.ts",
+    "engine.ts",
+    "types.ts",
+    "internals/**/*.ts",
+    "adapters/**/*.ts"
+  ],
+  "exclude": ["**/*.spec.ts", "node_modules", "uploads"]
+}

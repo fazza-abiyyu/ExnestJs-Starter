@@ -10,7 +10,7 @@ import {
   type VideoStore,
   type VideoUpdatePatch,
 } from './index.js';
-import { mountVideoEngine } from './index.js';
+import { mountVideoEngine } from './elysia.js';
 
 class MemoryStore implements VideoStore {
   private rows = new Map<string, Video>();

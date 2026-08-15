@@ -5,12 +5,12 @@ import { join } from 'node:path';
 import { Readable, Writable } from 'node:stream';
 import {
   VideoStreamEngine,
-  createVideoEngineController,
   type Video,
   type VideoCreateInput,
   type VideoStore,
   type VideoUpdatePatch,
 } from './index.js';
+import { createVideoEngineController } from './nest.js';
 
 class MemoryStore implements VideoStore {
   private rows = new Map<string, Video>();

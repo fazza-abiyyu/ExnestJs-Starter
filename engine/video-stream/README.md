@@ -76,10 +76,26 @@ video-stream/                  # this package (engine/video-stream in the monore
 
 ## Install
 
-1. Copy the `video-stream/` folder into your project (or reference it from the monorepo).
-2. Copy the `Video` model from `prisma-model.prisma` into your Prisma schema and run
+Runs on **Bun and Node.js (>=18)**. Zero external deps for the core — the `youtube-dl-exec`
+package (and `ffmpeg`/`ffprobe` on `PATH`) is only needed for YouTube / packaging features.
+Consume it from npm (packed tarball, `file:`/`git+` dependency — `prepare` runs the build),
+or copy `video-stream/` from the monorepo.
+
+```bash
+bunx tsc -p tsconfig.build.json   # build dist/ (run by `prepare` on git deps)
+```
+
+Entry points (via package `exports`):
+
+| Import | Contents |
+| --- | --- |
+| `@exnest/video-engine` | core: `VideoStreamEngine`, types, `PrismaVideoStore`, internals — no framework deps |
+| `@exnest/video-engine/nest` | `createVideoEngineController`, `VideoEngineModule` |
+| `@exnest/video-engine/elysia` | `mountVideoEngine`, `MountVideoEngineOptions` |
+
+1. Copy the `Video` model from `prisma-model.prisma` into your Prisma schema and run
    `db:generate`.
-3. Construct the engine with a store. See `.env.example` for the full list of `VIDEO_*`
+2. Construct the engine with a store. See `.env.example` for the full list of `VIDEO_*`
    env vars the host app is expected to supply:
 
 ```ts
@@ -94,8 +110,10 @@ const engine = new VideoStreamEngine(
     processSlots: 1,
     maxQueue: 5,
     proxyTimeoutMs: 30_000,
+    packagingTimeoutMs: 300_000, // ffmpeg-only hard limit, separate from fetch timeouts
     renditions: 3,       // 2 | 3
     keepSource: false,   // delete the source file once HLS is ready
+    youtubeIngest: true, // allow YouTube URLs as an ingest source (default true)
   },
   new PrismaVideoStore(prisma),
 );
@@ -109,7 +127,7 @@ await engine.start(); // probe ffmpeg + resume interrupted jobs
 4. Route it (Elysia):
 
 ```ts
-import { mountVideoEngine } from '@exnest/video-engine';
+import { mountVideoEngine } from '@exnest/video-engine/elysia';
 mountVideoEngine(app, {
   engine,
   apiKey: process.env.VIDEO_API_KEY,   // required for create/list/delete
@@ -130,7 +148,7 @@ Same routes, same envelope, same headers. Mount it as a feature module:
 
 ```ts
 import { Module } from '@nestjs/common';
-import { VideoEngineModule } from '@exnest/video-engine';
+import { VideoEngineModule } from '@exnest/video-engine/nest';
 
 @Module({
   imports: [
@@ -220,6 +238,8 @@ await engine.manifest(tenantId, id);              // master.m3u8 text
 await engine.segment(tenantId, id, relPath, opts);// -> Response (Range-aware)
 await engine.raw(tenantId, id, rangeHeader?);     // source or remote-range proxy
 engine.issueAccessCookie(videoId);
+engine.issueStreamToken(videoId, ttlSeconds?);  // -> { exp, sig }
+engine.signedStreamUrl(videoId, baseUrl, ttlSeconds?); // master URL with ?exp&sig pre-signed
 engine.verifyAccess(videoId, cookies, query);
 ```
 
@@ -234,10 +254,12 @@ engine.verifyAccess(videoId, cookies, query);
 | `maxBytes` | number | `2 GiB` | per-ingest cap |
 | `processSlots` | number | `1` | concurrent ffmpeg workers |
 | `maxQueue` | number | `5` | ingest rejected with 429 when full |
-| `proxyTimeoutMs` | number | `30_000` | per-hop fetch/ffmpeg timeout |
+| `proxyTimeoutMs` | number | `30_000` | per-hop fetch timeout |
+| `packagingTimeoutMs` | number | `proxyTimeoutMs` | ffmpeg job timeout — separate from fetch timeouts |
 | `renditions` | `2 \| 3` | `3` | `3` = 1080p/720p/480p, `2` = 720p/480p |
 | `keepSource` | boolean | `true` | delete source after successful packaging |
 | `progressive` | boolean | `false` | stream a remote URL straight into ffmpeg (stdin) — HLS segments are served as soon as the first ones land, no full download first |
+| `youtubeIngest` | boolean | `true` | allow YouTube URLs via `youtube-dl-exec`; `false` rejects them with `YOUTUBE_DISABLED` |
 
 YouTube handling has no config: the engine uses the `youtube-dl-exec` dependency directly
 (requires a JavaScript runtime on `PATH` for downloads, see the YouTube section above).
