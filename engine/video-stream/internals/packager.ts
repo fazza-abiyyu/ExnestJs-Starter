@@ -79,7 +79,7 @@ async function probeSource(ffprobeBin: string, sourcePath: string): Promise<Sour
         'json',
         sourcePath,
       ],
-      { stdio: ['ignore', 'ignore', 'pipe'] },
+      { stdio: ['ignore', 'pipe', 'pipe'] },
     );
     let out = '';
     let err = '';
