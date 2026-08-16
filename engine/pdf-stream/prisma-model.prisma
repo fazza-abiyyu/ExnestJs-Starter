@@ -1,0 +1,19 @@
+model StreamDocument {
+  id        String   @id @default(uuid())
+  tenantId  String
+  name      String
+  source    String // "FILE" | "DRIVE"
+  sourceUrl String?
+  fileName  String?
+  filePath  String?
+  watermark String?
+  pageCount Int      @default(0)
+  status    String   @default("pending") // pending | processing | ready | failed
+  attempt   Int      @default(0)
+  readyAt   DateTime?
+  errorMsg  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId])
+}

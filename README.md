@@ -23,6 +23,16 @@ access, SSRF guard, and tenant scoping. Stored + served locally as small static 
 - Package: [`engine/video-stream/`](engine/video-stream/)
 - Details: [`engine/video-stream/README.md`](engine/video-stream/README.md)
 
+### PDF Engine
+
+Protected **PDF viewing** — ingest a file or Google Drive link and get every page
+rasterized to a watermarked PNG, served only behind a signed `?exp&sig` token **and** an
+HttpOnly viewer cookie (no PDF bytes ever reach the browser). SSRF guard, tenant scoping,
+rate limit, resume on restart.
+
+- Package: [`engine/pdf-stream/`](engine/pdf-stream/)
+- Details: [`engine/pdf-stream/README.md`](engine/pdf-stream/README.md)
+
 > This section grows as new engines land (queue, transcode, live, …) — one folder per
 > engine, same boundary: kernel clean of frameworks, adapters optional.
 
