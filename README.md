@@ -6,6 +6,25 @@ A resource-oriented software framework with OData, available for multiple runtim
 
 - `packages/nestjs` — Enterprise implementation (NestJS)
 - `packages/elysia` — Fast implementation (Elysia + Bun)
+- `engine/` — framework-agnostic engines (plugins), each optionally consumed by any exnest app
+
+## Engines
+
+Standalone, framework-agnostic "machines" that an app can drop in without touching the
+framework cores. Each engine is npm-consumable (Bun and Node ≥ 18) with per-framework
+adapters (`/nest`, `/elysia`, …), so the same kernel runs on any backend.
+
+### Video Engine
+
+Adaptive-bitrate **HLS video streaming** — ingest a file, remote URL, Google Drive, or
+YouTube link, and get multi-rendition (1080p/720p/480p) HLS with audio, signed stream
+access, SSRF guard, and tenant scoping. Stored + served locally as small static segments.
+
+- Package: [`engine/video-stream/`](engine/video-stream/)
+- Details: [`engine/video-stream/README.md`](engine/video-stream/README.md)
+
+> This section grows as new engines land (queue, transcode, live, …) — one folder per
+> engine, same boundary: kernel clean of frameworks, adapters optional.
 
 ## Quickstart
 
