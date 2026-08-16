@@ -498,6 +498,7 @@ export class VideoStreamEngine {
       noCheckCertificates: true,
       noPlaylist: true,
       jsRuntimes: 'node',
+      extractorArgs: 'youtube:player_client=default,android,tv,web_embedded',
     });
     try {
       await this.withTimeout(async () => {
