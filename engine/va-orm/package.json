@@ -1,0 +1,49 @@
+{
+  "name": "@exnest/va",
+  "version": "0.1.0",
+  "description": "VA-ORM - Lightweight, production-grade ORM for Exnest Framework",
+  "type": "module",
+  "main": "./packages/client/dist/index.js",
+  "module": "./packages/client/dist/index.js",
+  "types": "./packages/client/dist/index.d.ts",
+  "bin": {
+    "va": "./packages/cli/bin/va.ts"
+  },
+  "exports": {
+    ".": {
+      "import": "./packages/client/dist/index.js",
+      "types": "./packages/client/dist/index.d.ts"
+    },
+    "./cli": {
+      "import": "./packages/cli/dist/index.js",
+      "types": "./packages/cli/dist/index.d.ts"
+    },
+    "./nest": {
+      "import": "./packages/client/dist/integrations/nestjs/index.js",
+      "types": "./packages/client/dist/integrations/nestjs/index.d.ts"
+    },
+    "./elysia": {
+      "import": "./packages/client/dist/integrations/elysia/index.js",
+      "types": "./packages/client/dist/integrations/elysia/index.d.ts"
+    }
+  },
+  "files": [
+    "packages/*/dist",
+    "packages/cli/bin"
+  ],
+  "scripts": {
+    "va": "bun packages/cli/bin/va.ts",
+    "build": "npm run build --workspaces",
+    "dev": "npm run dev --workspaces",
+    "test": "npm run test --workspaces",
+    "lint": "npm run lint --workspaces",
+    "typecheck": "npm run typecheck --workspaces"
+  },
+  "workspaces": [
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "license": "MIT"
+}

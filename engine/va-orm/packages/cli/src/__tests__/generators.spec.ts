@@ -1,0 +1,179 @@
+// VA-ORM Generator Specs Spec
+
+import { describe, it, expect } from 'bun:test'
+import { TypeGenerator } from '../generator/type.generator.js'
+import { ClientGenerator } from '../generator/client.generator.js'
+import { SqlGenerator } from '../generator/sql.generator.js'
+import type { SchemaAST } from '@exnest/va-schema'
+
+const testAst: SchemaAST = {
+  generator: [{ name: 'client', provider: 'va-client-js' }],
+  datasource: [{ name: 'db', provider: 'postgresql', url: 'env("DATABASE_URL")' }],
+  model: [
+    {
+      name: 'User',
+      fields: [
+        { name: 'id', type: 'Int', isArray: false, isOptional: false, attributes: [{ name: '@id', args: {} }, { name: '@default', args: { autoincrement: true } }] },
+        { name: 'email', type: 'String', isArray: false, isOptional: false, attributes: [{ name: '@unique', args: {} }] },
+        { name: 'name', type: 'String', isArray: false, isOptional: true, attributes: [] },
+        { name: 'role', type: 'Role', isArray: false, isOptional: false, attributes: [{ name: '@default', args: { 'USER': true } }] },
+        { name: 'posts', type: 'Post', isArray: true, isOptional: false, attributes: [] },
+        { name: 'createdAt', type: 'DateTime', isArray: false, isOptional: false, attributes: [{ name: '@default', args: { now: true } }] },
+      ],
+      attributes: [{ name: '@@map', args: { 'users': true } }],
+    },
+    {
+      name: 'Post',
+      fields: [
+        { name: 'id', type: 'Int', isArray: false, isOptional: false, attributes: [{ name: '@id', args: {} }, { name: '@default', args: { autoincrement: true } }] },
+        { name: 'title', type: 'String', isArray: false, isOptional: false, attributes: [] },
+        { name: 'content', type: 'Text', isArray: false, isOptional: true, attributes: [] },
+        { name: 'authorId', type: 'Int', isArray: false, isOptional: false, attributes: [] },
+      ],
+      attributes: [],
+    },
+  ],
+  enum: [
+    {
+      name: 'Role',
+      values: [{ name: 'ADMIN' }, { name: 'USER' }, { name: 'GUEST' }],
+    },
+  ],
+}
+
+describe('TypeGenerator', () => {
+  const generator = new TypeGenerator()
+
+  it('should generate enum types', () => {
+    const output = generator.generate(testAst)
+    expect(output).toContain('export enum Role')
+    expect(output).toContain("ADMIN = 'ADMIN'")
+    expect(output).toContain("USER = 'USER'")
+    expect(output).toContain("GUEST = 'GUEST'")
+  })
+
+  it('should generate model interface', () => {
+    const output = generator.generate(testAst)
+    expect(output).toContain('export interface User {')
+    expect(output).toContain('id: number')
+    expect(output).toContain('email: string')
+    expect(output).toContain('name?: string')
+    expect(output).toContain('posts: Post[]')
+  })
+
+  it('should generate create input', () => {
+    const output = generator.generate(testAst)
+    expect(output).toContain('export interface UserCreateInput {')
+  })
+
+  it('should generate update input', () => {
+    const output = generator.generate(testAst)
+    expect(output).toContain('export interface UserUpdateInput {')
+  })
+
+  it('should generate where input', () => {
+    const output = generator.generate(testAst)
+    expect(output).toContain('export interface UserWhereInput {')
+  })
+
+  it('should map types correctly', () => {
+    const output = generator.generate(testAst)
+    expect(output).toContain('id: number') // Int -> number
+    expect(output).toContain('createdAt: Date') // DateTime -> Date
+  })
+})
+
+describe('ClientGenerator', () => {
+  const generator = new ClientGenerator()
+
+  it('should generate client class', () => {
+    const output = generator.generate(testAst)
+    expect(output).toContain('export class VaClientGenerated extends VaClient')
+  })
+
+  it('should generate repository accessors', () => {
+    const output = generator.generate(testAst)
+    expect(output).toContain('get User(): Repository<User>')
+    expect(output).toContain('get Post(): Repository<Post>')
+  })
+
+  it('should generate constructor with models', () => {
+    const output = generator.generate(testAst)
+    expect(output).toContain("tableName: 'user'")
+    expect(output).toContain("tableName: 'post'")
+  })
+
+  it('should generate imports', () => {
+    const output = generator.generate(testAst)
+    expect(output).toContain("import { VaClient, Repository } from '@exnest/va-client'")
+  })
+})
+
+describe('SqlGenerator', () => {
+  describe('PostgreSQL', () => {
+    const generator = new SqlGenerator('postgres')
+
+    it('should generate CREATE TABLE', () => {
+      const output = generator.generateDDL(testAst)
+      expect(output).toContain('CREATE TABLE user')
+      expect(output).toContain('CREATE TABLE post')
+    })
+
+    it('should generate column definitions', () => {
+      const output = generator.generateDDL(testAst)
+      expect(output).toContain('id INTEGER PRIMARY KEY')
+      expect(output).toContain('email VARCHAR(255) NOT NULL UNIQUE')
+      expect(output).toContain('name VARCHAR(255)')
+    })
+
+    it('should generate DEFAULT for autoincrement', () => {
+      const output = generator.generateDDL(testAst)
+      expect(output).toContain('GENERATED ALWAYS AS IDENTITY')
+    })
+
+    it('should generate DEFAULT for now()', () => {
+      const output = generator.generateDDL(testAst)
+      expect(output).toContain('DEFAULT NOW()')
+    })
+
+    it('should generate enum type', () => {
+      const output = generator.generateDDL(testAst)
+      expect(output).toContain('CREATE TYPE Role AS ENUM')
+    })
+
+    it('should generate indexes', () => {
+      const astWithIndex: SchemaAST = {
+        ...testAst,
+        model: [{
+          ...testAst.model[0],
+          attributes: [{ name: '@@index', args: { fields: ['email'] } }],
+        }],
+      }
+      const output = generator.generateDDL(astWithIndex)
+      expect(output).toContain('CREATE INDEX')
+    })
+  })
+
+  describe('MySQL', () => {
+    const generator = new SqlGenerator('mysql')
+
+    it('should generate CREATE TABLE', () => {
+      const output = generator.generateDDL(testAst)
+      expect(output).toContain('CREATE TABLE user')
+    })
+
+    it('should use AUTO_INCREMENT instead of GENERATED ALWAYS', () => {
+      const output = generator.generateDDL(testAst)
+      expect(output).toContain('AUTO_INCREMENT')
+    })
+  })
+
+  describe('SQLite', () => {
+    const generator = new SqlGenerator('sqlite')
+
+    it('should generate CREATE TABLE', () => {
+      const output = generator.generateDDL(testAst)
+      expect(output).toContain('CREATE TABLE user')
+    })
+  })
+})

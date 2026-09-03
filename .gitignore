@@ -4,3 +4,5 @@ dist/
 coverage/
 *.log
 .env
+plan/*
+engine/va/test/
