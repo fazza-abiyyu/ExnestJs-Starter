@@ -25,6 +25,15 @@ access, SSRF guard, and tenant scoping. Stored + served locally as small static 
 - Package: [`engine/video-stream/`](engine/video-stream/)
 - Details: [`engine/video-stream/README.md`](engine/video-stream/README.md)
 
+### VA-ORM
+
+Lightweight **database ORM** — schema-first (`va.schema`) with Prisma-like syntax, generates
+pure TypeScript client. Supports PostgreSQL, MySQL, and SQLite with connection pooling, migrations,
+relations, and raw SQL. No implicit transactions — direct, fast, production-grade.
+
+- Package: [`engine/va-orm/`](engine/va-orm/)
+- Details: [`engine/va-orm/docs/README.md`](engine/va-orm/docs/README.md)
+
 ### PDF Engine
 
 Protected **PDF viewing** — ingest a file or Google Drive link and get every page
