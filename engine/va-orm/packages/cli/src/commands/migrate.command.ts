@@ -5,9 +5,10 @@ import * as fs from 'fs/promises'
 import * as path from 'path'
 
 export interface MigrateOptions {
-  command: 'up' | 'down' | 'status' | 'reset' | 'create'
+  command: 'up' | 'down' | 'status' | 'reset' | 'create' | 'dev' | 'resolve'
   steps?: number
   name?: string
+  to?: 'applied' | 'rolled-back'
   schema?: string
   migrationsDir?: string
 }
@@ -104,6 +105,35 @@ export async function migrateCommand(options: MigrateOptions): Promise<void> {
         }
         const filePath = await migrator.createMigration(options.name)
         console.log(`  ✓ Created migration: ${filePath}`)
+        break
+      }
+
+      case 'dev': {
+        if (!options.name) {
+          console.error('\x1b[31mError: Migration name is required\x1b[0m')
+          process.exit(1)
+        }
+        console.log(`Creating dev migration: ${options.name}`)
+        const { file, applied } = await migrator.dev(options.name)
+        console.log(`  ✓ Created migration: ${file}`)
+        if (applied.length === 0) {
+          console.log('No pending migrations')
+        } else {
+          for (const migration of applied) {
+            console.log(`  ✓ Applied: ${migration.name}`)
+          }
+        }
+        break
+      }
+
+      case 'resolve': {
+        if (!options.name) {
+          console.error('\x1b[31mError: Migration name is required\x1b[0m')
+          process.exit(1)
+        }
+        const to = options.to || 'applied'
+        await migrator.resolve(options.name, to)
+        console.log(`  ✓ Marked ${options.name} as ${to}`)
         break
       }
     }

@@ -7,6 +7,7 @@ import type {
   ModelBlock,
   FieldDefinition,
 } from './schema.types.js'
+import { isScalarType } from './schema.relations.js'
 
 export class SchemaValidator {
   private errors: ValidationError[] = []
@@ -18,7 +19,7 @@ export class SchemaValidator {
 
     this.validateGenerator(ast.generator)
     this.validateDatasource(ast.datasource)
-    this.validateModels(ast.model)
+    this.validateModels(ast.model, ast.enum)
     this.validateEnums(ast.enum)
     this.validateRelations(ast.model)
 
@@ -80,12 +81,13 @@ export class SchemaValidator {
     }
   }
 
-  private validateModels(models: ModelBlock[]): void {
-    const modelNames = new Set<string>()
+  private validateModels(models: ModelBlock[], enums: any[]): void {
+    const modelNames = new Set<string>(models.map((m) => m.name))
+    const enumNames = new Set<string>(enums.map((e) => e.name))
+    const seen = new Set<string>()
 
     for (const model of models) {
-      // Check for duplicate model names
-      if (modelNames.has(model.name)) {
+      if (seen.has(model.name)) {
         this.errors.push({
           line: 0,
           column: 0,
@@ -93,7 +95,7 @@ export class SchemaValidator {
           severity: 'error',
         })
       }
-      modelNames.add(model.name)
+      seen.add(model.name)
 
       // Check for fields
       if (model.fields.length === 0) {
@@ -116,22 +118,34 @@ export class SchemaValidator {
         })
       }
 
+      // Check @@map has a string argument
+      const mapAttr = model.attributes.find((a) => a.name === '@@map')
+      if (mapAttr && firstStringArg(mapAttr.args) === undefined) {
+        this.errors.push({
+          line: 0,
+          column: 0,
+          message: `@@map on model "${model.name}" requires a table name string`,
+          severity: 'error',
+        })
+      }
+
       // Validate fields
       for (const field of model.fields) {
-        this.validateField(model.name, field)
+        this.validateField(model.name, field, modelNames, enumNames)
       }
     }
   }
 
-  private validateField(modelName: string, field: FieldDefinition): void {
-    // Check field type
-    const validTypes = [
-      'String', 'Text', 'Int', 'BigInt', 'Float', 'Decimal',
-      'Boolean', 'DateTime', 'Uuid', 'Json', 'Bytes',
-    ]
-
+  private validateField(
+    modelName: string,
+    field: FieldDefinition,
+    modelNames: Set<string>,
+    enumNames: Set<string>
+  ): void {
+    // Check field type (scalar, enum, or relation to another model)
     const baseType = field.type.replace('[]', '')
-    if (!validTypes.includes(baseType) && !this.isEnumType(baseType)) {
+    const isRelation = modelNames.has(baseType)
+    if (!isScalarType(field.type, enumNames) && !isRelation) {
       this.errors.push({
         line: 0,
         column: 0,
@@ -159,6 +173,17 @@ export class SchemaValidator {
         line: 0,
         column: 0,
         message: `Field "${field.name}" in model "${modelName}" has both @id and @unique (redundant)`,
+      })
+    }
+
+    // Check @map has a string argument
+    const mapAttr = field.attributes.find((a) => a.name === '@map')
+    if (mapAttr && firstStringArg(mapAttr.args) === undefined) {
+      this.errors.push({
+        line: 0,
+        column: 0,
+        message: `@map on field "${field.name}" in model "${modelName}" requires a column name string`,
+        severity: 'error',
       })
     }
   }
@@ -205,48 +230,103 @@ export class SchemaValidator {
   }
 
   private validateRelations(models: ModelBlock[]): void {
-    const modelNames = new Set(models.map(m => m.name))
+    const byName = new Map(models.map((m) => [m.name, m]))
 
     for (const model of models) {
+      const unnamedTargets = new Map<string, string[]>()
       for (const field of model.fields) {
-        // Check @relation references
-        const relationAttr = field.attributes.find(a => a.name === '@relation')
-        if (relationAttr && relationAttr.args) {
-          const references = relationAttr.args['references'] as string[]
-          if (references) {
-            for (const ref of references) {
-              const [refModel, refField] = ref.split('.')
-              if (!modelNames.has(refModel)) {
-                this.errors.push({
-                  line: 0,
-                  column: 0,
-                  message: `Relation references non-existent model "${refModel}" in field "${field.name}" of model "${model.name}"`,
-                  severity: 'error',
-                })
-              }
-            }
-          }
+        const targetModel = field.type.replace('[]', '')
+        if (!byName.has(targetModel)) continue
+        const relationAttr = field.attributes.find((a) => a.name === '@relation')
+        const args = relationAttr?.args ?? {}
+        const relationName = Object.entries(args).find(
+          ([k, v]) => v === true && k !== field.name
+        )?.[0]
+
+        if (!relationName) {
+          const list = unnamedTargets.get(targetModel) ?? []
+          list.push(field.name)
+          unnamedTargets.set(targetModel, list)
         }
 
-        // Check @relation onDelete
-        if (relationAttr && relationAttr.args) {
-          const onDelete = relationAttr.args['onDelete'] as string
-          if (onDelete && !['Cascade', 'Restrict', 'SetNull', 'NoAction'].includes(onDelete)) {
+        const fkFields = toStringArray(args['fields'])
+        const references = toStringArray(args['references'])
+
+        for (const fk of fkFields) {
+          if (!model.fields.some((f) => f.name === fk)) {
             this.errors.push({
               line: 0,
               column: 0,
-              message: `Invalid onDelete strategy "${onDelete}" in field "${field.name}" of model "${model.name}"`,
+              message: `Relation field "${fk}" does not exist in model "${model.name}" (field "${field.name}")`,
               severity: 'error',
             })
           }
+        }
+
+        const target = byName.get(targetModel)
+        for (const ref of references) {
+          if (target && !target.fields.some((f) => f.name === ref)) {
+            this.errors.push({
+              line: 0,
+              column: 0,
+              message: `Relation references non-existent field "${ref}" in model "${targetModel}" (field "${field.name}" of model "${model.name}")`,
+              severity: 'error',
+            })
+          }
+        }
+
+        if (references.length > 0 && fkFields.length === 0) {
+          this.errors.push({
+            line: 0,
+            column: 0,
+            message: `Relation on field "${field.name}" of model "${model.name}" has references without fields`,
+            severity: 'error',
+          })
+        }
+
+        // Check @relation onDelete
+        const onDelete = args['onDelete'] !== undefined ? stripArgQuotes(String(args['onDelete'])) : undefined
+        if (onDelete && !['Cascade', 'Restrict', 'SetNull', 'NoAction', 'SetDefault'].includes(onDelete)) {
+          this.errors.push({
+            line: 0,
+            column: 0,
+            message: `Invalid onDelete strategy "${onDelete}" in field "${field.name}" of model "${model.name}"`,
+            severity: 'error',
+          })
+        }
+      }
+
+      for (const [target, fields] of unnamedTargets) {
+        if (fields.length > 1) {
+          this.errors.push({
+            line: 0,
+            column: 0,
+            message: `Multiple relations to model "${target}" in model "${model.name}" (${fields.join(', ')}) require a relation name: @relation("Name", ...)`,
+            severity: 'error',
+          })
         }
       }
     }
   }
 
-  private isEnumType(type: string): boolean {
-    // This would need to be checked against the actual schema
-    // For now, return false
-    return false
+}
+function toStringArray(value: any): string[] {
+  if (Array.isArray(value)) return value.map((v) => stripArgQuotes(String(v)))
+  if (value === undefined || value === null) return []
+  return [stripArgQuotes(String(value))]
+}
+
+function firstStringArg(args: Record<string, any>): string | undefined {
+  if (typeof args.value === 'string') return stripArgQuotes(args.value)
+  for (const [key, value] of Object.entries(args)) {
+    if (value === true) return stripArgQuotes(key)
   }
+  return undefined
+}
+
+function stripArgQuotes(value: string): string {
+  if (value.length >= 2 && value.startsWith('"') && value.endsWith('"')) {
+    return value.slice(1, -1)
+  }
+  return value
 }

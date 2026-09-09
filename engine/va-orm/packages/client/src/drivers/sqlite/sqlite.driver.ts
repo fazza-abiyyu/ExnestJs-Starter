@@ -44,8 +44,22 @@ export class SqliteDriver implements DatabaseDriver {
   }
 
   async transaction<T>(fn: (driver: DatabaseDriver) => Promise<T>): Promise<T> {
-    const transaction = this.db.transaction(() => fn(this))
-    return transaction()
+    const txDriver: DatabaseDriver = {
+      query: <R = any>(sql: string, params?: any[]) => this.query<R>(sql, params),
+      execute: (sql: string, params?: any[]) => this.execute(sql, params),
+      transaction: (nested: (driver: DatabaseDriver) => Promise<T>) => nested(txDriver),
+      close: async () => {},
+      getPlaceholder: (_index: number) => '?',
+    }
+    this.db.exec('BEGIN')
+    try {
+      const result = await fn(txDriver)
+      this.db.exec('COMMIT')
+      return result
+    } catch (error) {
+      this.db.exec('ROLLBACK')
+      throw error
+    }
   }
 
   async close(): Promise<void> {

@@ -212,15 +212,37 @@ describe('SchemaValidator', () => {
         generator: [{ name: 'client', provider: 'va-client-js' }],
         datasource: [{ name: 'db', provider: 'postgresql', url: 'env("DATABASE_URL")' }],
         model: [{
+          name: 'User',
+          fields: [{
+            name: 'id',
+            type: 'String',
+            isArray: false,
+            isOptional: false,
+            attributes: [{ name: '@id', args: {} }],
+          }],
+          attributes: [],
+        }, {
           name: 'Post',
           fields: [{
+            name: 'id',
+            type: 'String',
+            isArray: false,
+            isOptional: false,
+            attributes: [{ name: '@id', args: {} }],
+          }, {
+            name: 'userId',
+            type: 'String',
+            isArray: false,
+            isOptional: false,
+            attributes: [],
+          }, {
             name: 'author',
             type: 'User',
             isArray: false,
             isOptional: false,
             attributes: [{
               name: '@relation',
-              args: { references: ['NonExistent.id'] },
+              args: { fields: ['userId'], references: ['NonExistent'] },
             }],
           }],
           attributes: [],
@@ -228,7 +250,7 @@ describe('SchemaValidator', () => {
         enum: [],
       }
       const { errors } = validator.validate(ast)
-      expect(errors.some(e => e.message.includes('non-existent model'))).toBe(true)
+      expect(errors.some(e => e.message.includes('non-existent field'))).toBe(true)
     })
 
     it('should report error for invalid onDelete strategy', () => {
@@ -236,15 +258,37 @@ describe('SchemaValidator', () => {
         generator: [{ name: 'client', provider: 'va-client-js' }],
         datasource: [{ name: 'db', provider: 'postgresql', url: 'env("DATABASE_URL")' }],
         model: [{
+          name: 'User',
+          fields: [{
+            name: 'id',
+            type: 'String',
+            isArray: false,
+            isOptional: false,
+            attributes: [{ name: '@id', args: {} }],
+          }],
+          attributes: [],
+        }, {
           name: 'Post',
           fields: [{
+            name: 'id',
+            type: 'String',
+            isArray: false,
+            isOptional: false,
+            attributes: [{ name: '@id', args: {} }],
+          }, {
+            name: 'userId',
+            type: 'String',
+            isArray: false,
+            isOptional: false,
+            attributes: [],
+          }, {
             name: 'author',
             type: 'User',
             isArray: false,
             isOptional: false,
             attributes: [{
               name: '@relation',
-              args: { references: ['User.id'], onDelete: 'InvalidStrategy' },
+              args: { fields: ['userId'], references: ['id'], onDelete: 'InvalidStrategy' },
             }],
           }],
           attributes: [],

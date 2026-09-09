@@ -55,9 +55,22 @@ export class PostgresDriver implements DatabaseDriver {
 
   async transaction<T>(fn: (driver: DatabaseDriver) => Promise<T>): Promise<T> {
     const client = await this.pool.connect()
+    const txDriver: DatabaseDriver = {
+      query: async <R = any>(sql: string, params?: any[]) => {
+        const result = await client.query(sql, params)
+        return { rows: result.rows as R[], rowCount: result.rowCount ?? 0 }
+      },
+      execute: async (sql: string, params?: any[]) => {
+        const result = await client.query(sql, params)
+        return { rowCount: result.rowCount ?? 0 }
+      },
+      transaction: (nested: (driver: DatabaseDriver) => Promise<T>) => nested(txDriver),
+      close: async () => {},
+      getPlaceholder: (index: number) => this.getPlaceholder(index),
+    }
     try {
       await client.query('BEGIN')
-      const result = await fn(this)
+      const result = await fn(txDriver)
       await client.query('COMMIT')
       return result
     } catch (error) {

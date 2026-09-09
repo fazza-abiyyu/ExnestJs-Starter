@@ -9,6 +9,13 @@ export * from './core/expression.js'
 export * from './repository/repository.js'
 export * from './repository/batch.js'
 export * from './repository/aggregation.js'
+export * from './repository/model.delegate.js'
+export * from './repository/nested.writes.js'
+export * from './repository/field.ops.js'
+
+export * from './relation/index.js'
+export { ansiQuote, mysqlQuote, quoterFor } from './relation/quote.js'
+export type { QuoteFn } from './relation/quote.js'
 
 export * from './raw/raw-query.js'
 export * from './raw/cte.js'

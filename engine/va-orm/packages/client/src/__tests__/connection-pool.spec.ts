@@ -85,8 +85,55 @@ describe('ConnectionPool', () => {
       expect(stats).toHaveProperty('waitingCount')
       expect(stats).toHaveProperty('totalQueries')
       expect(stats).toHaveProperty('totalErrors')
+      expect(stats).toHaveProperty('slowQueries')
       expect(stats).toHaveProperty('avgQueryTimeMs')
+      expect(stats).toHaveProperty('maxQueryTimeMs')
       expect(stats).toHaveProperty('uptimeMs')
+    })
+  })
+
+  describe('health', () => {
+    it('should report healthy with working driver', async () => {
+      pool = new ConnectionPool('sqlite', ':memory:', { min: 1 })
+      await expect(pool.isHealthy()).resolves.toBe(true)
+    })
+
+    it('should report unhealthy after close', async () => {
+      pool = new ConnectionPool('sqlite', ':memory:', { min: 1 })
+      await pool.close()
+      await expect(pool.isHealthy()).resolves.toBe(false)
+    })
+
+    it('should ping with latency', async () => {
+      pool = new ConnectionPool('sqlite', ':memory:', { min: 1 })
+      const { latencyMs } = await pool.ping()
+      expect(latencyMs).toBeGreaterThanOrEqual(0)
+    })
+  })
+
+  describe('slow queries', () => {
+    it('should count slow queries and call handler', async () => {
+      const slow: any[] = []
+      pool = new ConnectionPool('sqlite', ':memory:', {
+        min: 1,
+        slowQueryThresholdMs: 0,
+        onSlowQuery: (info) => slow.push(info),
+      })
+      await pool.query('SELECT 1')
+      const stats = pool.getStats()
+      expect(stats.slowQueries).toBe(1)
+      expect(slow).toHaveLength(1)
+      expect(slow[0].sql).toBe('SELECT 1')
+      expect(slow[0].elapsedMs).toBeGreaterThanOrEqual(0)
+    })
+
+    it('should not count fast queries', async () => {
+      pool = new ConnectionPool('sqlite', ':memory:', {
+        min: 1,
+        slowQueryThresholdMs: 60000,
+      })
+      await pool.query('SELECT 1')
+      expect(pool.getStats().slowQueries).toBe(0)
     })
   })
 

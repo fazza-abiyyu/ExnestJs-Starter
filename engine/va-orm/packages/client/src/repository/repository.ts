@@ -3,6 +3,7 @@
 import type { DatabaseDriver, WhereClause, OrderClause, SortDirection, RepositoryOptions, OffsetResult, OffsetOptions, CursorResult, CursorOptions } from '../core/types.js'
 import { QueryBuilder } from '../core/query-builder.js'
 import { ExpressionBuilder } from '../core/expression.js'
+import { buildSetClause } from './field.ops.js'
 
 export class Repository<T extends Record<string, any>> {
   private options: Required<RepositoryOptions>
@@ -118,12 +119,13 @@ export class Repository<T extends Record<string, any>> {
   // ============ UPDATE ============
 
   async update(where: Partial<T>, data: Partial<T>): Promise<T> {
-    const setColumns = Object.keys(data)
-    const setValues = Object.values(data)
-    const setParts = setColumns.map((col, i) => `${col} = ${this.driver.getPlaceholder(i + 1)}`)
+    const { setParts, params: setValues, nextIndex } = buildSetClause(
+      data as Record<string, any>,
+      (i) => this.driver.getPlaceholder(i)
+    )
 
     const whereConditions = Object.entries(where)
-    const whereParts = whereConditions.map(([key], i) => `${key} = ${this.driver.getPlaceholder(setValues.length + i + 1)}`)
+    const whereParts = whereConditions.map(([key], i) => `${key} = ${this.driver.getPlaceholder(nextIndex + i)}`)
     const whereValues = whereConditions.map(([, value]) => value)
 
     const sql = `UPDATE ${this.tableName} SET ${setParts.join(', ')} WHERE ${whereParts.join(' AND ')} RETURNING *`
@@ -132,12 +134,13 @@ export class Repository<T extends Record<string, any>> {
   }
 
   async updateMany(where: Partial<T>, data: Partial<T>): Promise<number> {
-    const setColumns = Object.keys(data)
-    const setValues = Object.values(data)
-    const setParts = setColumns.map((col, i) => `${col} = ${this.driver.getPlaceholder(i + 1)}`)
+    const { setParts, params: setValues, nextIndex } = buildSetClause(
+      data as Record<string, any>,
+      (i) => this.driver.getPlaceholder(i)
+    )
 
     const whereConditions = Object.entries(where)
-    const whereParts = whereConditions.map(([key], i) => `${key} = ${this.driver.getPlaceholder(setValues.length + i + 1)}`)
+    const whereParts = whereConditions.map(([key], i) => `${key} = ${this.driver.getPlaceholder(nextIndex + i)}`)
     const whereValues = whereConditions.map(([, value]) => value)
 
     const sql = `UPDATE ${this.tableName} SET ${setParts.join(', ')} WHERE ${whereParts.join(' AND ')}`

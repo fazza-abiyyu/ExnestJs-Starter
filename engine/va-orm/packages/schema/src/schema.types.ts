@@ -33,6 +33,7 @@ export interface FieldDefinition {
   isArray: boolean
   isOptional: boolean
   attributes: FieldAttribute[]
+  columnName?: string
 }
 
 export interface FieldAttribute {
@@ -53,6 +54,28 @@ export interface EnumBlock {
 export interface EnumValue {
   name: string
   attributes?: FieldAttribute[]
+}
+
+// ============ RELATIONS ============
+
+export type RelationKind = 'many-to-one' | 'one-to-many' | 'one-to-one' | 'many-to-many-implicit'
+
+export type ReferentialAction = 'Cascade' | 'Restrict' | 'NoAction' | 'SetNull' | 'SetDefault'
+
+export interface RelationFieldInfo {
+  field: string
+  targetModel: string
+  isList: boolean
+  kind: RelationKind
+  fkModel: string
+  fkFields: string[]
+  pkModel: string
+  pkFields: string[]
+  onDelete?: string
+  relationName?: string
+  joinTable?: string
+  backField?: string
+  isFkHolder: boolean
 }
 
 // ============ VALIDATION ============

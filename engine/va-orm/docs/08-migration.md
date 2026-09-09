@@ -34,6 +34,24 @@ const applied = await migrator.migrate()
 console.log(applied) // ['20240101_create_users', '20240102_create_posts']
 ```
 
+#### dev (create + apply)
+
+```typescript
+// Create migration file and immediately apply pending migrations
+const { file, applied } = await migrator.dev(
+  'add_users_table',
+  'CREATE TABLE users (id SERIAL PRIMARY KEY)'
+)
+```
+
+#### resolve
+
+```typescript
+// Mark a failed/stuck migration without running SQL
+await migrator.resolve('20240101_create_users', 'applied')
+await migrator.resolve('20240101_create_users', 'rolled-back')
+```
+
 #### rollback (down)
 
 ```typescript
@@ -68,6 +86,46 @@ const status = await migrator.status()
 const name = await migrator.createMigration('add_email_index')
 // Creates: migrations/20240103120000_add_email_index.sql
 ```
+
+## db push
+
+Apply `va.schema` DDL directly without migration files:
+
+```bash
+bun run va db push
+bun run va db push --schema ./va.schema
+```
+
+```typescript
+import { pushCommand } from '@exnest/va/cli'
+
+await pushCommand({ schema: './va.schema' })
+// Reads DATABASE_URL, detects provider, executes DDL
+```
+
+## db pull
+
+Introspect a live database into `va.schema` text:
+
+```bash
+bun run va db pull
+bun run va db pull --output ./va.pulled.schema
+bun run va db pull --schemas public,tenancy
+```
+
+```typescript
+import { SchemaIntrospector } from '@exnest/va/cli'
+
+const introspector = new SchemaIntrospector(driver, 'postgres', ['public'])
+const tables = await introspector.introspect()
+const schema = introspector.toSchema(tables, 'postgresql')
+```
+
+Introspection maps column types back to scalars (`varchar` → `String`,
+`serial` → `Int` + `@default(autoincrement())`), primary keys to `@id`,
+unique constraints to `@unique`, indexes to `@@index`, foreign keys to
+`@relation(...)`, and emits `@@map` for table names. Model names are
+PascalCase singular (`user_sessions` → `UserSession`).
 
 ## Migration Files
 

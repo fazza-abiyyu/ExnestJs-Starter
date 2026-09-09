@@ -41,18 +41,18 @@ describe('Migration', () => {
       const fs = await import('fs/promises')
       const path = await import('path')
       const testDir = './test-migrations-create'
-      
+
       try {
         await fs.mkdir(testDir, { recursive: true })
         const testMigrator = new Migrator(driver, testDir)
         const filePath = await testMigrator.createMigration('test-migration')
         expect(filePath).toContain('test-migration')
-        
+
         const content = await fs.readFile(filePath, 'utf-8')
         expect(content).toContain('test-migration')
         expect(content).toContain('-- Up migration')
         expect(content).toContain('-- Down migration')
-        
+
         await fs.rm(testDir, { recursive: true })
       } catch (error) {
         // Cleanup on error
@@ -61,6 +61,72 @@ describe('Migration', () => {
         } catch {}
         throw error
       }
+    })
+
+    it('should run dev migration (create + apply)', async () => {
+      const fs = await import('fs/promises')
+      const testDir = './test-migrations-dev'
+
+      try {
+        const testMigrator = new Migrator(driver, testDir)
+        driver.setResult({ rows: [], rowCount: 0 })
+        driver.setResult({ rows: [], rowCount: 0 })
+        driver.setResult({ rows: [], rowCount: 0 })
+
+        const { file, applied } = await testMigrator.dev('add_users', 'CREATE TABLE users (id INT)')
+        expect(file).toContain('add_users')
+
+        const content = await fs.readFile(file, 'utf-8')
+        expect(content).toContain('CREATE TABLE users (id INT)')
+
+        expect(applied.length).toBe(1)
+        expect(applied[0].name).toContain('add_users')
+
+        await fs.rm(testDir, { recursive: true })
+      } catch (error) {
+        try {
+          const fs = await import('fs/promises')
+          await fs.rm(testDir, { recursive: true })
+        } catch {}
+        throw error
+      }
+    })
+
+    it('should resolve migration as applied', async () => {
+      driver.setResult({ rows: [], rowCount: 0 })
+      driver.setResult({ rows: [], rowCount: 0 })
+      driver.setResult({ rowCount: 1 })
+
+      const testMigrator = new Migrator(driver, './test-migrations')
+      await testMigrator.resolve('20240101_add_users', 'applied')
+
+      const queries = driver.getQueries()
+      const insert = queries.find((q) => q.sql.startsWith('INSERT INTO _va_migrations'))
+      expect(insert).toBeDefined()
+      expect(insert!.params).toEqual(['20240101_add_users'])
+    })
+
+    it('should resolve migration as rolled-back', async () => {
+      driver.setResult({ rows: [], rowCount: 0 })
+
+      const testMigrator = new Migrator(driver, './test-migrations')
+      await testMigrator.resolve('20240101_add_users', 'rolled-back')
+
+      const queries = driver.getQueries()
+      const del = queries.find((q) => q.sql.startsWith('DELETE FROM _va_migrations'))
+      expect(del).toBeDefined()
+      expect(del!.params).toEqual(['20240101_add_users'])
+    })
+
+    it('should not duplicate applied record on resolve', async () => {
+      driver.setResult({ rows: [], rowCount: 0 })
+      driver.setResult({ rows: [{ name: '20240101_add_users' }], rowCount: 1 })
+
+      const testMigrator = new Migrator(driver, './test-migrations')
+      await testMigrator.resolve('20240101_add_users', 'applied')
+
+      const queries = driver.getQueries()
+      expect(queries.some((q) => q.sql.startsWith('INSERT INTO _va_migrations'))).toBe(false)
     })
   })
 

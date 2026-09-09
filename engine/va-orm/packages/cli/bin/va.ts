@@ -6,6 +6,8 @@
 import { validateCommand } from '../src/commands/validate.command.js'
 import { generateCommand } from '../src/commands/generate.command.js'
 import { migrateCommand } from '../src/commands/migrate.command.js'
+import { pushCommand } from '../src/commands/push.command.js'
+import { pullCommand } from '../src/commands/pull.command.js'
 
 const args = process.argv.slice(2)
 const command = args[0]
@@ -35,6 +37,12 @@ function showHelp() {
       status                           Show migration status
       reset                            Rollback all migrations
       create <name>                    Create new migration
+      dev <name>                       Create + apply migration
+      resolve <name> --to <state>      Mark migration applied|rolled-back
+
+    db                                 Direct database commands
+      push                             Push va.schema DDL directly
+      pull                             Introspect database to schema
 
   Examples:
     va validate
@@ -44,6 +52,10 @@ function showHelp() {
     va migrate down --steps 3
     va migrate status
     va migrate create add_users_table
+    va migrate dev add_users_table
+    va migrate resolve 20240101_x --to applied
+    va db push
+    va db pull --output ./va.pulled.schema
   `)
 }
 
@@ -70,20 +82,37 @@ async function main() {
 
     case 'migrate': {
       const subcommand = args[1]
-      if (!subcommand || !['up', 'down', 'status', 'reset', 'create'].includes(subcommand)) {
-        console.error('\x1b[31mError: migrate requires a subcommand (up, down, status, reset, create)\x1b[0m')
+      if (!subcommand || !['up', 'down', 'status', 'reset', 'create', 'dev', 'resolve'].includes(subcommand)) {
+        console.error('\x1b[31mError: migrate requires a subcommand (up, down, status, reset, create, dev, resolve)\x1b[0m')
         showHelp()
         process.exit(1)
       }
 
       const steps = getArg('--steps') ? parseInt(getArg('--steps')!) : undefined
-      const name = subcommand === 'create' ? args[2] : undefined
+      const name = ['create', 'dev', 'resolve'].includes(subcommand) ? args[2] : undefined
+      const to = getArg('--to') as 'applied' | 'rolled-back' | undefined
 
       await migrateCommand({
-        command: subcommand as 'up' | 'down' | 'status' | 'reset' | 'create',
+        command: subcommand as 'up' | 'down' | 'status' | 'reset' | 'create' | 'dev' | 'resolve',
         steps,
         name,
+        to,
       })
+      break
+    }
+
+    case 'db': {
+      const subcommand = args[1]
+      if (subcommand === 'push') {
+        await pushCommand({ schema: getArg('--schema') })
+      } else if (subcommand === 'pull') {
+        const schemas = getArg('--schemas')?.split(',').map((s) => s.trim()).filter(Boolean)
+        await pullCommand({ output: getArg('--output'), schemas })
+      } else {
+        console.error('\x1b[31mError: db requires a subcommand (push, pull)\x1b[0m')
+        showHelp()
+        process.exit(1)
+      }
       break
     }
 

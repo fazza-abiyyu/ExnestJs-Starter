@@ -1,6 +1,6 @@
 // VA-ORM Connection Pool
 
-import type { DatabaseDriver, DriverType, ConnectionConfig, PoolStats } from './types.js'
+import type { DatabaseDriver, DriverType, ConnectionConfig, PoolStats, SlowQueryInfo } from './types.js'
 
 interface PooledConnection {
   driver: DatabaseDriver
@@ -22,11 +22,13 @@ export class ConnectionPool {
     reject: (error: Error) => void
     timeout?: ReturnType<typeof setTimeout>
   }> = []
-  private config: Required<Omit<ConnectionConfig, 'connectionString' | 'host' | 'port' | 'database' | 'user' | 'password' | 'filename' | 'ssl' | 'driverFactory'>> & { driverFactory?: (dsn: string) => DatabaseDriver }
+  private config: Required<Omit<ConnectionConfig, 'connectionString' | 'host' | 'port' | 'database' | 'user' | 'password' | 'filename' | 'ssl' | 'driverFactory' | 'slowQueryThresholdMs' | 'onSlowQuery'>> & { driverFactory?: (dsn: string) => DatabaseDriver; slowQueryThresholdMs?: number; onSlowQuery?: (info: SlowQueryInfo) => void }
   private stats = {
     totalQueries: 0,
     totalErrors: 0,
+    slowQueries: 0,
     totalQueryTimeMs: 0,
+    maxQueryTimeMs: 0,
     startTime: Date.now(),
   }
   private healthCheckInterval?: ReturnType<typeof setInterval>
@@ -56,6 +58,8 @@ export class ConnectionPool {
       applicationName: options.applicationName ?? 'va-orm',
       disablePreparedStatements: options.disablePreparedStatements ?? false,
       driverFactory: options.driverFactory,
+      slowQueryThresholdMs: options.slowQueryThresholdMs,
+      onSlowQuery: options.onSlowQuery,
     }
 
     this.ready = this.init()
@@ -206,6 +210,19 @@ export class ConnectionPool {
     }
   }
 
+  private trackQuery(sql: string, params: any[] | undefined, start: number): void {
+    const elapsedMs = Date.now() - start
+    this.stats.totalQueries++
+    this.stats.totalQueryTimeMs += elapsedMs
+    if (elapsedMs > this.stats.maxQueryTimeMs) {
+      this.stats.maxQueryTimeMs = elapsedMs
+    }
+    if (this.config.slowQueryThresholdMs !== undefined && elapsedMs >= this.config.slowQueryThresholdMs) {
+      this.stats.slowQueries++
+      this.config.onSlowQuery?.({ sql, elapsedMs, params })
+    }
+  }
+
   async query<T = any>(sql: string, params?: any[]): Promise<{ rows: T[]; rowCount: number }> {
     const start = Date.now()
     let lastError: Error | undefined
@@ -214,8 +231,7 @@ export class ConnectionPool {
       const driver = await this.acquire()
       try {
         const result = await driver.query<T>(sql, params)
-        this.stats.totalQueries++
-        this.stats.totalQueryTimeMs += Date.now() - start
+        this.trackQuery(sql, params, start)
         await this.release(driver)
         return result
       } catch (error) {
@@ -243,8 +259,7 @@ export class ConnectionPool {
       const driver = await this.acquire()
       try {
         const result = await driver.execute(sql, params)
-        this.stats.totalQueries++
-        this.stats.totalQueryTimeMs += Date.now() - start
+        this.trackQuery(sql, params, start)
         await this.release(driver)
         return result
       } catch (error) {
@@ -322,6 +337,31 @@ export class ConnectionPool {
     this.connections = []
   }
 
+  async isHealthy(): Promise<boolean> {
+    try {
+      const driver = await this.acquire()
+      try {
+        await driver.query(this.config.healthCheckQuery)
+        return true
+      } finally {
+        await this.release(driver)
+      }
+    } catch {
+      return false
+    }
+  }
+
+  async ping(): Promise<{ latencyMs: number }> {
+    const start = Date.now()
+    const driver = await this.acquire()
+    try {
+      await driver.query(this.config.healthCheckQuery)
+      return { latencyMs: Date.now() - start }
+    } finally {
+      await this.release(driver)
+    }
+  }
+
   getStats(): PoolStats {
     return {
       totalCount: this.connections.length + this.waitingQueue.length,
@@ -330,9 +370,11 @@ export class ConnectionPool {
       waitingCount: this.waitingQueue.length,
       totalQueries: this.stats.totalQueries,
       totalErrors: this.stats.totalErrors,
+      slowQueries: this.stats.slowQueries,
       avgQueryTimeMs: this.stats.totalQueries > 0
         ? this.stats.totalQueryTimeMs / this.stats.totalQueries
         : 0,
+      maxQueryTimeMs: this.stats.maxQueryTimeMs,
       uptimeMs: Date.now() - this.stats.startTime,
     }
   }

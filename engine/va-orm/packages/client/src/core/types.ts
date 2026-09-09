@@ -55,6 +55,14 @@ export interface ConnectionConfig {
   applicationName?: string
   disablePreparedStatements?: boolean
   driverFactory?: (dsn: string) => DatabaseDriver
+  slowQueryThresholdMs?: number
+  onSlowQuery?: (info: SlowQueryInfo) => void
+}
+
+export interface SlowQueryInfo {
+  sql: string
+  elapsedMs: number
+  params?: any[]
 }
 
 // ============ FILTER OPERATORS ============
@@ -114,6 +122,80 @@ export interface RelationDefinition {
   referenceKey?: string
   through?: string
 }
+
+// ============ RELATIONS ============
+
+export type RelationKind = 'many-to-one' | 'one-to-many' | 'one-to-one' | 'many-to-many-implicit'
+
+export interface RelationMeta {
+  field: string
+  targetModel: string
+  isList: boolean
+  kind: RelationKind
+  fkModel: string
+  fkFields: string[]
+  pkModel: string
+  pkFields: string[]
+  onDelete?: string
+  relationName?: string
+  joinTable?: string
+  backField?: string
+  isFkHolder: boolean
+}
+
+export interface ModelMeta {
+  name: string
+  table: string
+  primaryKey: string
+  relations: Map<string, RelationMeta>
+}
+
+export type ScalarFilter<T = any> =
+  | T
+  | {
+      equals?: T
+      not?: T
+      in?: T[]
+      notIn?: T[]
+      lt?: T
+      lte?: T
+      gt?: T
+      gte?: T
+      contains?: string
+      startsWith?: string
+      endsWith?: string
+      mode?: 'default' | 'insensitive'
+    }
+
+export interface RelationFilter {
+  some?: WhereInput
+  every?: WhereInput
+  none?: WhereInput
+  is?: WhereInput
+  isNot?: WhereInput
+}
+
+export interface WhereInput {
+  AND?: WhereInput[]
+  OR?: WhereInput[]
+  NOT?: WhereInput | WhereInput[]
+  [field: string]: ScalarFilter | RelationFilter | WhereInput[] | WhereInput | undefined
+}
+
+export type IncludeArg =
+  | boolean
+  | {
+      where?: WhereInput
+      orderBy?: Record<string, SortDirection>
+      take?: number
+      skip?: number
+      select?: SelectArg
+      include?: Record<string, IncludeArg>
+    }
+
+export type IncludeMap = Record<string, IncludeArg>
+
+export type SelectArg = Record<string, boolean> | string[]
 
 // ============ PAGINATION ============
 
@@ -196,6 +278,8 @@ export interface PoolStats {
   waitingCount: number
   totalQueries: number
   totalErrors: number
+  slowQueries: number
   avgQueryTimeMs: number
+  maxQueryTimeMs: number
   uptimeMs: number
 }

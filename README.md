@@ -2,6 +2,8 @@
 
 A resource-oriented software framework with OData, available for multiple runtimes in a single monorepo.
 
+> Under the management of Void VA — open-source project.
+
 ## Structure
 
 - `packages/nestjs` — Enterprise implementation (NestJS)

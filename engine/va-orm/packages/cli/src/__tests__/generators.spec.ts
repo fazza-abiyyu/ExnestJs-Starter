@@ -63,23 +63,38 @@ describe('TypeGenerator', () => {
 
   it('should generate create input', () => {
     const output = generator.generate(testAst)
-    expect(output).toContain('export interface UserCreateInput {')
+    expect(output).toContain('export type UserCreateInput = {')
   })
 
   it('should generate update input', () => {
     const output = generator.generate(testAst)
-    expect(output).toContain('export interface UserUpdateInput {')
+    expect(output).toContain('export type UserUpdateInput = {')
   })
 
   it('should generate where input', () => {
     const output = generator.generate(testAst)
-    expect(output).toContain('export interface UserWhereInput {')
+    expect(output).toContain('export type UserWhereInput = {')
   })
 
   it('should map types correctly', () => {
     const output = generator.generate(testAst)
     expect(output).toContain('id: number') // Int -> number
     expect(output).toContain('createdAt: Date') // DateTime -> Date
+  })
+
+  it('should generate relation-aware where input', () => {
+    const output = generator.generate(testAst)
+    expect(output).toContain('posts?: {')
+    expect(output).toContain('some?: PostWhereInput;')
+    expect(output).toContain('export type UserSelect = {')
+    expect(output).toContain('export type UserInclude = {')
+    expect(output).toContain('export type UserUniqueWhere = {')
+  })
+
+  it('should generate nested create/update inputs', () => {
+    const output = generator.generate(testAst)
+    expect(output).toContain('connectOrCreate')
+    expect(output).toContain('disconnect')
   })
 })
 
@@ -91,21 +106,31 @@ describe('ClientGenerator', () => {
     expect(output).toContain('export class VaClientGenerated extends VaClient')
   })
 
-  it('should generate repository accessors', () => {
+  it('should generate typed delegate accessors', () => {
     const output = generator.generate(testAst)
-    expect(output).toContain('get User(): Repository<User>')
-    expect(output).toContain('get Post(): Repository<Post>')
+    expect(output).toContain('get user(): UserDelegate')
+    expect(output).toContain('get post(): PostDelegate')
+    expect(output).toContain('export class UserDelegate extends ModelDelegate<User>')
+    expect(output).toContain("return this.delegate('User', UserDelegate)")
+  })
+
+  it('should embed schema AST', () => {
+    const output = generator.generate(testAst)
+    expect(output).toContain('const schema: SchemaAST')
+    expect(output).toContain('schema,')
   })
 
   it('should generate constructor with models', () => {
     const output = generator.generate(testAst)
-    expect(output).toContain("tableName: 'user'")
-    expect(output).toContain("tableName: 'post'")
+    expect(output).toContain('const schema: SchemaAST')
+    expect(output).toContain('@@map')
+    expect(output).toContain('schema,')
   })
 
   it('should generate imports', () => {
     const output = generator.generate(testAst)
-    expect(output).toContain("import { VaClient, Repository } from '@exnest/va-client'")
+    expect(output).toContain("import { VaClient } from '@exnest/va-client'")
+    expect(output).toContain("import { ModelDelegate } from '@exnest/va-client'")
   })
 })
 

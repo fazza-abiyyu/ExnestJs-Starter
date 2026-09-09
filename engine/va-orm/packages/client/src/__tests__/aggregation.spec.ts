@@ -18,6 +18,7 @@ describe('AggregationRepository', () => {
       driver.setResult({ rows: [{ _count: 10 }], rowCount: 1 })
       const result = await aggregation.aggregate({ _count: true })
       expect(result).toEqual({ _count: 10 })
+      expect(driver.getQueries()[0].sql).toBe('SELECT COUNT(*) as _count FROM "users"')
     })
 
     it('should sum fields', async () => {
@@ -60,17 +61,29 @@ describe('AggregationRepository', () => {
         _avg_age: 25,
       })
     })
+
+    it('should filter with WhereInput operators', async () => {
+      driver.setResult({ rows: [{ _count: 5 }], rowCount: 1 })
+      const result = await aggregation.aggregate({
+        where: { status: 'active', age: { gte: 18 } },
+        _count: true,
+      })
+      expect(result).toEqual({ _count: 5 })
+      const query = driver.getQueries()[0]
+      expect(query.sql).toContain('WHERE "status" = $1 AND "age" >= $2')
+      expect(query.params).toEqual(['active', 18])
+    })
   })
 
   describe('count', () => {
     it('should count all records', async () => {
-      driver.setResult({ rows: [{ count: 10 }], rowCount: 1 })
+      driver.setResult({ rows: [{ _count: 10 }], rowCount: 1 })
       const count = await aggregation.count()
       expect(count).toBe(10)
     })
 
     it('should count with where', async () => {
-      driver.setResult({ rows: [{ count: 5 }], rowCount: 1 })
+      driver.setResult({ rows: [{ _count: 5 }], rowCount: 1 })
       const count = await aggregation.count({ status: 'active' })
       expect(count).toBe(5)
     })
@@ -86,11 +99,12 @@ describe('AggregationRepository', () => {
         rowCount: 2,
       })
 
-      const result = await aggregation.groupBy(['role'], { _count: true })
+      const result = await aggregation.groupBy({ by: ['role'], _count: true })
       expect(result).toEqual([
         { role: 'admin', _count: 5 },
         { role: 'user', _count: 20 },
       ])
+      expect(driver.getQueries()[0].sql).toContain('GROUP BY "role"')
     })
 
     it('should group by multiple fields', async () => {
@@ -102,7 +116,7 @@ describe('AggregationRepository', () => {
         rowCount: 2,
       })
 
-      const result = await aggregation.groupBy(['role', 'status'], { _count: true })
+      const result = await aggregation.groupBy({ by: ['role', 'status'], _count: true })
       expect(result.length).toBe(2)
     })
 
@@ -115,9 +129,7 @@ describe('AggregationRepository', () => {
         rowCount: 2,
       })
 
-      const result = await aggregation.groupBy(['role'], {
-        _sum: ['age'],
-      })
+      const result = await aggregation.groupBy({ by: ['role'], _sum: ['age'] })
       expect(result).toEqual([
         { role: 'admin', _sum_age: 125 },
         { role: 'user', _sum_age: 500 },
@@ -133,9 +145,7 @@ describe('AggregationRepository', () => {
         rowCount: 2,
       })
 
-      const result = await aggregation.groupBy(['role'], {
-        _avg: ['age'],
-      })
+      const result = await aggregation.groupBy({ by: ['role'], _avg: ['age'] })
       expect(result).toEqual([
         { role: 'admin', _avg_age: 35 },
         { role: 'user', _avg_age: 28 },
@@ -148,11 +158,13 @@ describe('AggregationRepository', () => {
         rowCount: 1,
       })
 
-      const result = await aggregation.groupBy(['role'], {
+      const result = await aggregation.groupBy({
+        by: ['role'],
         where: { status: 'active' },
         _count: true,
       })
       expect(result.length).toBe(1)
+      expect(driver.getQueries()[0].sql).toContain('WHERE "status" = $1')
     })
 
     it('should group with orderBy', async () => {
@@ -164,11 +176,54 @@ describe('AggregationRepository', () => {
         rowCount: 2,
       })
 
-      const result = await aggregation.groupBy(['role'], {
-        orderBy: { _count: 'desc' },
+      const result = await aggregation.groupBy({
+        by: ['role'],
+        orderBy: { role: 'desc' },
         _count: true,
       })
       expect(result[0]._count).toBe(20)
+      expect(driver.getQueries()[0].sql).toContain('ORDER BY "role" DESC')
+    })
+
+    it('should group with having on _count', async () => {
+      driver.setResult({ rows: [{ role: 'user', _count: 20 }], rowCount: 1 })
+
+      const result = await aggregation.groupBy({
+        by: ['role'],
+        _count: true,
+        having: { _count: { _all: { gt: 5 } } },
+      })
+      expect(result).toEqual([{ role: 'user', _count: 20 }])
+      const query = driver.getQueries()[0]
+      expect(query.sql).toContain('HAVING COUNT(*) > $1')
+      expect(query.params).toEqual([5])
+    })
+
+    it('should group with having on field aggregate', async () => {
+      driver.setResult({ rows: [{ role: 'user' }], rowCount: 1 })
+
+      await aggregation.groupBy({
+        by: ['role'],
+        _sum: ['balance'],
+        having: { _sum: { balance: { gte: 1000 } } },
+      })
+      const query = driver.getQueries()[0]
+      expect(query.sql).toContain('HAVING SUM("balance") >= $1')
+      expect(query.params).toEqual([1000])
+    })
+
+    it('should group with take and skip', async () => {
+      driver.setResult({ rows: [], rowCount: 0 })
+      await aggregation.groupBy({ by: ['role'], _count: true, take: 10, skip: 5 })
+      const sql = driver.getQueries()[0].sql
+      expect(sql).toContain('LIMIT 10')
+      expect(sql).toContain('OFFSET 5')
+    })
+
+    it('should require non-empty by', async () => {
+      await expect(aggregation.groupBy({ by: [], _count: true })).rejects.toThrow(
+        'groupBy requires a non-empty "by" array'
+      )
     })
   })
 })

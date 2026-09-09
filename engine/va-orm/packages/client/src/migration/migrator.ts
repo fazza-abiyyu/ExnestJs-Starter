@@ -106,7 +106,7 @@ export class Migrator {
     return { applied, pending }
   }
 
-  async createMigration(name: string): Promise<string> {
+  async createMigration(name: string, upSql = '', downSql = ''): Promise<string> {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
     const filename = `${timestamp}_${name}.sql`
 
@@ -117,15 +117,37 @@ export class Migrator {
 -- Created at: ${new Date().toISOString()}
 
 -- Up migration
--- Write your SQL here
-
+${upSql}
 
 -- Down migration
--- Write your rollback SQL here
-
+${downSql}
 `
     await fs.writeFile(filePath, template)
     return filePath
+  }
+
+  async dev(name: string, upSql = '', downSql = ''): Promise<{ file: string; applied: MigrationRecord[] }> {
+    const file = await this.createMigration(name, upSql, downSql)
+    const applied = await this.migrate()
+    return { file, applied }
+  }
+
+  async resolve(name: string, action: 'applied' | 'rolled-back'): Promise<void> {
+    await this.initialize()
+    if (action === 'applied') {
+      const applied = await this.getAppliedMigrations()
+      if (!applied.some((m) => m.name === name)) {
+        await this.driver.execute(
+          `INSERT INTO ${this.migrationsTableName} (name) VALUES ($1)`,
+          [name]
+        )
+      }
+    } else {
+      await this.driver.execute(
+        `DELETE FROM ${this.migrationsTableName} WHERE name = $1`,
+        [name]
+      )
+    }
   }
 
   private async loadMigrations(): Promise<Migration[]> {

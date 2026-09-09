@@ -5,4 +5,4 @@ coverage/
 *.log
 .env
 plan/*
-engine/va/test/
+engine/va-orm/test/

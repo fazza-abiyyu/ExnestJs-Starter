@@ -17,7 +17,8 @@ docs/
 ├── 08-migration.md        # Migration system
 ├── 09-integrations.md     # Framework integrations
 ├── 10-cli.md              # CLI tools
-└── 11-testing.md          # Testing strategy
+├── 11-testing.md          # Testing strategy
+└── 12-relations.md        # Relations (include, filters, nested writes)
 ```
 
 ## Quick Start

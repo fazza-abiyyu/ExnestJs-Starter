@@ -213,6 +213,13 @@ export class SchemaParser {
     }
 
     this.advance()
+
+    const mapAttr = model.attributes.find((a) => a.name === '@@map')
+    if (mapAttr) {
+      const mapped = firstPositionalArg(mapAttr.args)
+      if (mapped !== undefined) model.tableName = mapped
+    }
+
     return model
   }
 
@@ -240,13 +247,21 @@ export class SchemaParser {
       attributes.push(this.parseFieldAttribute())
     }
 
-    return {
+    const field: FieldDefinition = {
       name,
       type,
       isArray,
       isOptional,
       attributes,
     }
+
+    const mapAttr = attributes.find((a) => a.name === '@map')
+    if (mapAttr) {
+      const mapped = firstPositionalArg(mapAttr.args)
+      if (mapped !== undefined) field.columnName = mapped
+    }
+
+    return field
   }
 
   private parseFieldAttribute(): FieldAttribute {
@@ -271,6 +286,19 @@ export class SchemaParser {
           args[key] = this.parseValue()
         } else if (this.current === ',') {
           this.advance()
+        } else if (this.current === '[') {
+          this.advance()
+          const list: string[] = Array.isArray(args['fields']) ? args['fields'] : []
+          while (this.current !== ']' && this.current !== '') {
+            if (this.current === ',') {
+              this.advance()
+              continue
+            }
+            list.push(this.current)
+            this.advance()
+          }
+          this.expect(']')
+          args['fields'] = list
         } else {
           const value = this.current
           this.advance()
@@ -310,6 +338,19 @@ export class SchemaParser {
           args[key] = this.parseValue()
         } else if (this.current === ',') {
           this.advance()
+        } else if (this.current === '[') {
+          this.advance()
+          const list: string[] = Array.isArray(args['fields']) ? args['fields'] : []
+          while (this.current !== ']' && this.current !== '') {
+            if (this.current === ',') {
+              this.advance()
+              continue
+            }
+            list.push(this.current)
+            this.advance()
+          }
+          this.expect(']')
+          args['fields'] = list
         } else {
           const value = this.current
           this.advance()
@@ -423,4 +464,19 @@ export class SchemaParser {
     this.advance()
     return value
   }
+}
+
+function firstPositionalArg(args: Record<string, any>): string | undefined {
+  if (typeof args.value === 'string') return stripArgQuotes(args.value)
+  for (const [key, value] of Object.entries(args)) {
+    if (value === true) return stripArgQuotes(key)
+  }
+  return undefined
+}
+
+function stripArgQuotes(value: string): string {
+  if (value.length >= 2 && value.startsWith('"') && value.endsWith('"')) {
+    return value.slice(1, -1)
+  }
+  return value
 }
