@@ -28,6 +28,7 @@ export class TypeGenerator {
     }
 
     for (const model of ast.model) {
+      if (model.isIgnored) continue
       this.generateModelType(model)
       this.w.line()
       this.generateWhereInput(model)
@@ -82,6 +83,7 @@ export class TypeGenerator {
   private generateModelType(model: ModelBlock): void {
     this.w.block(`export interface ${model.name} {`, () => {
       for (const f of model.fields) {
+        if (f.isIgnored) continue
         const type = this.mapType(f.type, f.isArray)
         const optional = f.isOptional ? '?' : ''
         const nullable = f.isOptional && this.isRelation(f) && !this.isList(f) ? ' | null' : ''
@@ -124,6 +126,7 @@ export class TypeGenerator {
       this.w.line(`OR?: ${model.name}WhereInput[];`)
       this.w.line(`NOT?: ${model.name}WhereInput | ${model.name}WhereInput[];`)
       for (const f of model.fields) {
+        if (f.isIgnored) continue
         if (this.isRelation(f)) {
           const target = f.type.replace('[]', '')
           if (this.isList(f)) {
@@ -149,6 +152,7 @@ export class TypeGenerator {
   private generateSelect(model: ModelBlock): void {
     this.w.block(`export type ${model.name}Select = {`, () => {
       for (const f of model.fields) {
+        if (f.isIgnored) continue
         if (this.isRelation(f)) continue
         this.w.line(`${f.name}?: boolean;`)
       }
@@ -219,6 +223,7 @@ export class TypeGenerator {
     const omit = new Set(info?.fkFields ?? [])
     this.w.block(`export type ${name} = {`, () => {
       for (const f of model.fields) {
+        if (f.isIgnored) continue
         if (omit.has(f.name)) continue
         if (this.isRelation(f)) {
           this.w.prop(f.name, this.nestedCreateType(model, f))
@@ -234,6 +239,7 @@ export class TypeGenerator {
   private generateCreateInput(model: ModelBlock): void {
     this.w.block(`export type ${model.name}CreateInput = {`, () => {
       for (const f of model.fields) {
+        if (f.isIgnored) continue
         if (this.isRelation(f)) {
           this.w.prop(f.name, this.nestedCreateType(model, f))
           continue
@@ -256,6 +262,7 @@ export class TypeGenerator {
   private generateUpdateInput(model: ModelBlock): void {
     this.w.block(`export type ${model.name}UpdateInput = {`, () => {
       for (const f of model.fields) {
+        if (f.isIgnored) continue
         if (this.isRelation(f)) {
           this.w.prop(f.name, this.nestedUpdateType(model, f))
           continue

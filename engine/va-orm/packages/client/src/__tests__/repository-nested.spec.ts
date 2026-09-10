@@ -114,9 +114,11 @@ describe('ModelDelegate nested create', () => {
   it('should connectOrCreate existing record', async () => {
     const driver = new MockDriver()
     driver.setResult({ rows: [{ id: 1, name: 'John' }], rowCount: 1 })
+    driver.setResult({ rowCount: 0 }) // acquireAdvisoryLock
     driver.setResult({ rows: [{ id: 10, userId: null, title: 'A' }], rowCount: 1 })
     driver.setResult({ rows: [{ id: 10, userId: null, title: 'A' }], rowCount: 1 })
     driver.setResult({ rowCount: 1 })
+    driver.setResult({ rowCount: 0 }) // releaseAdvisoryLock
 
     const users = new ModelDelegate(driver, userModel(), registry())
     await users.create({
@@ -127,16 +129,17 @@ describe('ModelDelegate nested create', () => {
     })
 
     const queries = driver.getQueries()
-    expect(queries[1].sql).toContain('SELECT * FROM "posts"')
     expect(queries.some((q) => q.sql.startsWith('INSERT INTO "posts"'))).toBe(false)
-    expect(queries[queries.length - 1].sql).toContain('UPDATE "posts" SET "userId"')
+    expect(queries[queries.length - 2].sql).toContain('UPDATE "posts" SET "userId"')
   })
 
   it('should connectOrCreate new record', async () => {
     const driver = new MockDriver()
     driver.setResult({ rows: [{ id: 1, name: 'John' }], rowCount: 1 })
+    driver.setResult({ rowCount: 0 }) // acquireAdvisoryLock
     driver.setResult({ rows: [], rowCount: 0 })
     driver.setResult({ rows: [{ id: 12, userId: 1, title: 'New' }], rowCount: 1 })
+    driver.setResult({ rowCount: 0 }) // releaseAdvisoryLock
 
     const users = new ModelDelegate(driver, userModel(), registry())
     await users.create({

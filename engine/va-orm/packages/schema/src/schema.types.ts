@@ -5,6 +5,7 @@ export interface SchemaAST {
   datasource: DatasourceBlock[]
   model: ModelBlock[]
   enum: EnumBlock[]
+  view?: ViewBlock[]
 }
 
 export interface GeneratorBlock {
@@ -25,6 +26,7 @@ export interface ModelBlock {
   tableName?: string
   fields: FieldDefinition[]
   attributes: ModelAttribute[]
+  isIgnored?: boolean
 }
 
 export interface FieldDefinition {
@@ -34,6 +36,7 @@ export interface FieldDefinition {
   isOptional: boolean
   attributes: FieldAttribute[]
   columnName?: string
+  isIgnored?: boolean
 }
 
 export interface FieldAttribute {
@@ -54,6 +57,22 @@ export interface EnumBlock {
 export interface EnumValue {
   name: string
   attributes?: FieldAttribute[]
+}
+
+// ============ VIEWS ============
+
+export interface ViewBlock {
+  name: string
+  tableName?: string
+  fields: ViewField[]
+  query?: string
+  attributes: ModelAttribute[]
+}
+
+export interface ViewField {
+  name: string
+  type: string
+  isOptional: boolean
 }
 
 // ============ RELATIONS ============

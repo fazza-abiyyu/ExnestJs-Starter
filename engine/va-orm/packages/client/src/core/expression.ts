@@ -137,6 +137,28 @@ export class ExpressionBuilder {
     })
   }
 
+  // ============ ARRAY OPERATIONS (PostgreSQL) ============
+
+  has(column: string, value: any): this {
+    return this.addClause({ column, operator: '@>', value: [value] })
+  }
+
+  hasSome(column: string, values: any[]): this {
+    return this.addClause({ column, operator: '&&', value: values })
+  }
+
+  hasEvery(column: string, values: any[]): this {
+    return this.addClause({ column, operator: '@>', value: values })
+  }
+
+  isEmpty(column: string): this {
+    return this.addClause({ column, operator: '=', value: { raw: 'ARRAY[]::[]', values: [] } })
+  }
+
+  isNotEmpty(column: string): this {
+    return this.addClause({ column, operator: '!=', value: { raw: 'ARRAY[]::[]', values: [] } })
+  }
+
   // ============ BUILD ============
 
   build(): { sql: string; params: any[] } {
@@ -182,10 +204,20 @@ export class ExpressionBuilder {
 
       if (clause.value && typeof clause.value === 'object' && 'raw' in clause.value) {
         const rawValues = clause.value.values
-        let valueIndex = 0
         const processed = clause.value.raw.replace(/\?/g, () => this.placeholderFn(paramIndex++))
         parts.push(`${prefix}${processed}`)
         params.push(...rawValues)
+        continue
+      }
+
+      // Array operators: @> (contains), && (overlaps)
+      if (clause.operator === '@>' || clause.operator === '&&') {
+        const values = clause.value as any[]
+        if (Array.isArray(values)) {
+          const placeholders = values.map(() => this.placeholderFn(paramIndex++))
+          parts.push(`${prefix}${clause.column} ${clause.operator} ARRAY[${placeholders.join(', ')}]::text[]`)
+          params.push(...values)
+        }
         continue
       }
 

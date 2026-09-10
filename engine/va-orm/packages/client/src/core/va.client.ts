@@ -12,6 +12,8 @@ import { ModelDelegate } from '../repository/model.delegate.js'
 import { RawQuery } from '../raw/raw-query.js'
 import { CTEBuilder } from '../raw/cte.js'
 import { SubqueryBuilder } from '../raw/subquery.js'
+import { QueryMiddleware, type MiddlewareFn } from '../middleware/query.middleware.js'
+import { EventEmitter, type EventListener, type EventData } from '../events/query.event.js'
 
 export interface VaClientModelOptions {
   tableName?: string
@@ -36,6 +38,8 @@ export class VaClient {
   private delegates = new Map<string, ModelDelegate<any>>()
   private modelRegistry = new Map<string, ModelMeta>()
   private rawQuery: RawQuery
+  private middleware = new QueryMiddleware()
+  private events = new EventEmitter()
 
   constructor(private options: VaClientOptions) {
     if (options.pooling !== false) {
@@ -236,6 +240,35 @@ export class VaClient {
   async ping(): Promise<{ latencyMs: number }> {
     if (!this.pool) return { latencyMs: 0 }
     return this.pool.ping()
+  }
+
+  // ============ MIDDLEWARE ============
+
+  $use(middleware: MiddlewareFn): void {
+    this.middleware.use(middleware)
+  }
+
+  // ============ EVENTS ============
+
+  $on<T extends EventData = EventData>(event: T['type'], listener: EventListener<T>): () => void {
+    return this.events.on(event, listener)
+  }
+
+  // ============ EXTENSIONS ============
+
+  $extends(config: { query?: Record<string, (params: any, next: any) => Promise<any>> }): VaClient {
+    const extended = new VaClient(this.options)
+    if (config.query) {
+      for (const [action, hook] of Object.entries(config.query)) {
+        extended.middleware.use(async (params, next) => {
+          if (params.action === action) {
+            return hook(params, () => next(params))
+          }
+          return next(params)
+        })
+      }
+    }
+    return extended
   }
 
   // ============ STATIC ============

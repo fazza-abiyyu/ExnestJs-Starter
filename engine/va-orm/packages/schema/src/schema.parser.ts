@@ -10,6 +10,7 @@ import type {
   ModelAttribute,
   EnumBlock,
   EnumValue,
+  ViewBlock,
 } from './schema.types.js'
 
 export class SchemaParser {
@@ -27,6 +28,7 @@ export class SchemaParser {
       datasource: [],
       model: [],
       enum: [],
+      view: [],
     }
 
     while (this.position < this.tokens.length) {
@@ -40,6 +42,8 @@ export class SchemaParser {
         ast.model.push(this.parseModel())
       } else if (token === 'enum') {
         ast.enum.push(this.parseEnum())
+      } else if (token === 'view') {
+        ast.view!.push(this.parseView())
       } else {
         this.advance()
       }
@@ -220,6 +224,10 @@ export class SchemaParser {
       if (mapped !== undefined) model.tableName = mapped
     }
 
+    if (model.attributes.some((a) => a.name === '@@ignore')) {
+      model.isIgnored = true
+    }
+
     return model
   }
 
@@ -259,6 +267,10 @@ export class SchemaParser {
     if (mapAttr) {
       const mapped = firstPositionalArg(mapAttr.args)
       if (mapped !== undefined) field.columnName = mapped
+    }
+
+    if (attributes.some((a) => a.name === '@ignore')) {
+      field.isIgnored = true
     }
 
     return field
@@ -398,6 +410,60 @@ export class SchemaParser {
 
     this.advance()
     return enumBlock
+  }
+
+  private parseView(): ViewBlock {
+    this.advance() // skip 'view'
+    const name = this.current
+    this.advance()
+    this.expect('{')
+
+    const view: ViewBlock = {
+      name,
+      fields: [],
+      attributes: [],
+    }
+
+    while (this.current !== '}') {
+      if (this.current.startsWith('@@')) {
+        view.attributes.push(this.parseModelAttribute())
+      } else if (this.current.startsWith('@')) {
+        this.advance()
+      } else if (this.current === 'query') {
+        // Parse query block
+        this.advance() // skip 'query'
+        this.expect('=')
+        if (this.current.startsWith('"')) {
+          view.query = this.current.slice(1, -1)
+          this.advance()
+        }
+      } else {
+        // Parse field
+        const fieldName = this.current
+        this.advance()
+        const fieldType = this.current
+        this.advance()
+
+        const isOptional = this.current === '?'
+        if (isOptional) this.advance()
+
+        view.fields.push({
+          name: fieldName,
+          type: fieldType,
+          isOptional,
+        })
+      }
+    }
+
+    this.advance()
+
+    const mapAttr = view.attributes.find((a) => a.name === '@@map')
+    if (mapAttr) {
+      const mapped = firstPositionalArg(mapAttr.args)
+      if (mapped !== undefined) view.tableName = mapped
+    }
+
+    return view
   }
 
   private parseValue(): any {

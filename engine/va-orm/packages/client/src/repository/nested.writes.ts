@@ -166,11 +166,53 @@ export class NestedWriter {
     op: ConnectOrCreateOp
   ): Promise<void> {
     const child = this.metaOf(meta.targetModel)
-    const found = await this.findByUnique(child, op.where)
-    if (found) {
-      await this.connect(meta, parent, parentRow, op.where)
-    } else {
-      await this.nestedCreate(meta, parent, parentRow, op.create)
+
+    // Use advisory lock to prevent race conditions
+    const lockKey = this.generateLockKey(child.name, op.where)
+    await this.acquireAdvisoryLock(lockKey)
+
+    try {
+      const found = await this.findByUnique(child, op.where)
+      if (found) {
+        await this.connect(meta, parent, parentRow, op.where)
+      } else {
+        await this.nestedCreate(meta, parent, parentRow, op.create)
+      }
+    } finally {
+      await this.releaseAdvisoryLock(lockKey)
+    }
+  }
+
+  private generateLockKey(modelName: string, where: Record<string, any>): string {
+    const whereStr = JSON.stringify(where, Object.keys(where).sort())
+    let hash = 0
+    for (let i = 0; i < whereStr.length; i++) {
+      const char = whereStr.charCodeAt(i)
+      hash = ((hash << 5) - hash) + char
+      hash = hash & hash
+    }
+    return `${modelName}:${Math.abs(hash)}`
+  }
+
+  private async acquireAdvisoryLock(lockKey: string): Promise<void> {
+    try {
+      await this.driver.execute(
+        `SELECT pg_advisory_lock(hashtext($1))`,
+        [lockKey]
+      )
+    } catch {
+      // Advisory locks not supported (non-PostgreSQL), skip locking
+    }
+  }
+
+  private async releaseAdvisoryLock(lockKey: string): Promise<void> {
+    try {
+      await this.driver.execute(
+        `SELECT pg_advisory_unlock(hashtext($1))`,
+        [lockKey]
+      )
+    } catch {
+      // Advisory locks not supported, skip unlocking
     }
   }
 

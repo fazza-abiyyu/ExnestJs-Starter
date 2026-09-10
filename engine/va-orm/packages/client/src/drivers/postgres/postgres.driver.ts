@@ -10,6 +10,7 @@ interface PgPool {
 export class PostgresDriver implements DatabaseDriver {
   private pool: PgPool
   private appName: string
+  private pgbouncerMode: boolean
 
   constructor(
     private connectionString: string,
@@ -20,10 +21,20 @@ export class PostgresDriver implements DatabaseDriver {
       connectionTimeoutMs?: number
       ssl?: boolean | { rejectUnauthorized?: boolean; ca?: string }
       applicationName?: string
+      disablePreparedStatements?: boolean
     } = {}
   ) {
     this.appName = options.applicationName || 'va-orm'
+    this.pgbouncerMode = this.detectPgBouncer() || options.disablePreparedStatements === true
     this.pool = this.createPool()
+  }
+
+  private detectPgBouncer(): boolean {
+    return (
+      this.connectionString.includes('pgbouncer') ||
+      this.connectionString.includes('supavisor') ||
+      this.connectionString.includes('transaction_mode=true')
+    )
   }
 
   private createPool(): PgPool {
@@ -37,6 +48,8 @@ export class PostgresDriver implements DatabaseDriver {
       connectionTimeoutMillis: this.options.connectionTimeoutMs ?? 5000,
       ssl: this.options.ssl || false,
       application_name: this.appName,
+      // PgBouncer compatibility: disable prepared statements
+      ...(this.pgbouncerMode ? { prepareThreshold: 0 } : {}),
     })
   }
 

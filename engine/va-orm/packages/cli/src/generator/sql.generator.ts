@@ -1,6 +1,6 @@
 // VA-ORM SQL Generator
 
-import type { SchemaAST, ModelBlock, FieldDefinition } from '../../../schema/src/schema.types.js'
+import type { SchemaAST, ModelBlock, FieldDefinition, FieldAttribute } from '../../../schema/src/schema.types.js'
 import type { RelationFieldInfo } from '../../../schema/src/schema.types.js'
 import { resolveRelations } from '../../../schema/src/schema.relations.js'
 import { tableNameOf, columnNameOf, columnNameOfField } from '../../../schema/src/schema.mapping.js'
@@ -26,6 +26,7 @@ export class SqlGenerator {
     const relations = resolveRelations(ast.model)
 
     for (const model of ast.model) {
+      if (model.isIgnored) continue
       lines.push(this.generateTable(model, modelNames, ast.model))
       lines.push('')
     }
@@ -45,8 +46,17 @@ export class SqlGenerator {
       lines.push('')
     }
 
+    // Generate views
+    if (ast.view) {
+      for (const view of ast.view) {
+        lines.push(this.generateView(view))
+        lines.push('')
+      }
+    }
+
     // Generate indexes
     for (const model of ast.model) {
+      if (model.isIgnored) continue
       const indexes = model.attributes.filter(a => a.name === '@@index')
       for (const index of indexes) {
         lines.push(this.generateIndex(model, index))
@@ -61,6 +71,7 @@ export class SqlGenerator {
     // Auto-index FK columns so JOINs and EXISTS filters use an index scan.
     // Skipped when the user already declared an index on the same columns.
     for (const model of ast.model) {
+      if (model.isIgnored) continue
       for (const indexSql of this.generateForeignKeyIndexes(model, modelNames, ast.model)) {
         lines.push(indexSql)
       }
@@ -71,7 +82,7 @@ export class SqlGenerator {
 
   private generateTable(model: ModelBlock, modelNames: Set<string>, allModels: ModelBlock[]): string {
     const tableName = tableNameOf(model)
-    const scalarFields = model.fields.filter((f) => !modelNames.has(f.type.replace('[]', '')))
+    const scalarFields = model.fields.filter((f) => !modelNames.has(f.type.replace('[]', '')) && !f.isIgnored)
     const columns = scalarFields.map(f => this.generateColumn(f))
     const constraints = this.generateForeignKeys(model, modelNames, allModels)
     const compositePk = model.attributes.find((a) => a.name === '@@id')
@@ -195,6 +206,12 @@ export class SqlGenerator {
   }
 
   private mapColumnType(field: FieldDefinition): string {
+    // Check for native type attribute (@db.VarChar, @db.Text, etc.)
+    const nativeTypeAttr = field.attributes.find((a) => a.name.startsWith('@db.'))
+    if (nativeTypeAttr) {
+      return this.resolveNativeType(nativeTypeAttr)
+    }
+
     const typeMap: Record<string, string> = {
       'String': 'VARCHAR(255)',
       'Text': 'TEXT',
@@ -216,12 +233,102 @@ export class SqlGenerator {
       if (this.provider === 'postgres') {
         sqlType = `${sqlType}[]`
       } else {
-        // For MySQL/SQLite, we'd need a separate table for arrays
         sqlType = 'TEXT'
       }
     }
 
     return sqlType
+  }
+
+  private resolveNativeType(attr: FieldAttribute): string {
+    const name = attr.name // e.g. @db.VarChar
+    const typeName = name.replace('@db.', '') // e.g. VarChar
+
+    // Extract arguments (e.g., 255 from @db.VarChar(255))
+    const args = attr.args
+    const firstArg = typeof args.value === 'number' ? args.value
+      : typeof args.value === 'string' ? parseInt(args.value, 10)
+      : undefined
+
+    const nativeTypeMap: Record<string, (p?: number) => string> = {
+      'Text': () => this.provider === 'mysql' ? 'LONGTEXT' : 'TEXT',
+      'VarChar': (p) => `VARCHAR(${p ?? 255})`,
+      'Char': (p) => `CHAR(${p ?? 1})`,
+      'Decimal': (p, s) => `DECIMAL(${p ?? 10}, ${s ?? 2})`,
+      'Numeric': (p, s) => `NUMERIC(${p ?? 10}, ${s ?? 2})`,
+      'Timestamp': () => {
+        if (this.provider === 'mysql') return 'DATETIME(3)'
+        if (this.provider === 'sqlite') return 'TEXT'
+        return 'TIMESTAMP(3)'
+      },
+      'Timestamptz': () => {
+        if (this.provider === 'mysql') return 'DATETIME(3)'
+        if (this.provider === 'sqlite') return 'TEXT'
+        return 'TIMESTAMPTZ'
+      },
+      'Date': () => this.provider === 'sqlite' ? 'TEXT' : 'DATE',
+      'Time': () => this.provider === 'sqlite' ? 'TEXT' : 'TIME',
+      'Bytes': () => {
+        if (this.provider === 'mysql') return 'LONGBLOB'
+        if (this.provider === 'sqlite') return 'BLOB'
+        return 'BYTEA'
+      },
+      'Bit': (p) => this.provider === 'sqlite' ? 'INTEGER' : `BIT(${p ?? 1})`,
+      'SmallInt': () => 'SMALLINT',
+      'MediumInt': () => this.provider === 'mysql' ? 'MEDIUMINT' : 'INTEGER',
+      'BigInt': () => 'BIGINT',
+      'Real': () => {
+        if (this.provider === 'mysql') return 'FLOAT'
+        return 'REAL'
+      },
+      'DoublePrecision': () => {
+        if (this.provider === 'mysql') return 'DOUBLE'
+        if (this.provider === 'sqlite') return 'REAL'
+        return 'DOUBLE PRECISION'
+      },
+      'Serial': () => {
+        if (this.provider === 'postgres') return 'SERIAL'
+        return 'INTEGER'
+      },
+      'BigSerial': () => {
+        if (this.provider === 'postgres') return 'BIGSERIAL'
+        return 'BIGINT'
+      },
+      'Uuid': () => {
+        if (this.provider === 'mysql') return 'CHAR(36)'
+        if (this.provider === 'sqlite') return 'TEXT'
+        return 'UUID'
+      },
+      'Json': () => this.provider === 'sqlite' ? 'TEXT' : 'JSON',
+      'JsonB': () => {
+        if (this.provider === 'mysql') return 'JSON'
+        if (this.provider === 'sqlite') return 'TEXT'
+        return 'JSONB'
+      },
+      'Xml': () => this.provider === 'postgres' ? 'XML' : 'TEXT',
+      'Inet': () => this.provider === 'postgres' ? 'INET' : 'TEXT',
+      'Cidr': () => this.provider === 'postgres' ? 'CIDR' : 'TEXT',
+      'MacAddr': () => this.provider === 'postgres' ? 'MACADDR' : 'TEXT',
+      'Money': () => this.provider === 'postgres' ? 'MONEY' : 'DECIMAL(19,4)',
+      'PgLSN': () => this.provider === 'postgres' ? 'PG_LSN' : 'TEXT',
+      'PgSnapshot': () => this.provider === 'postgres' ? 'PG_SNAPSHOT' : 'TEXT',
+      'TsVector': () => this.provider === 'postgres' ? 'TSVECTOR' : 'TEXT',
+      'TsQuery': () => this.provider === 'postgres' ? 'TSQUERY' : 'TEXT',
+    }
+
+    // Handle Decimal(p,s) with two args
+    if ((typeName === 'Decimal' || typeName === 'Numeric') && firstArg !== undefined) {
+      // Parse second arg from raw attribute args
+      const values = Object.values(args).filter(v => typeof v === 'number')
+      const p = values[0] as number | undefined
+      const s = values[1] as number | undefined
+      return nativeTypeMap[typeName]?.(p, s) ?? 'TEXT'
+    }
+
+    const resolver = nativeTypeMap[typeName]
+    if (resolver) return resolver(firstArg)
+
+    return 'TEXT'
   }
 
   private generateDefaultValue(field: FieldDefinition, args: Record<string, any>): string | null {
@@ -266,13 +373,80 @@ export class SqlGenerator {
     return `-- Enum ${enumBlock.name} (use CHECK constraint)`
   }
 
+  private generateView(view: any): string {
+    const viewName = view.tableName ?? this.toSnakeCase(view.name)
+
+    if (view.query) {
+      return `CREATE VIEW "${viewName}" AS ${view.query};`
+    }
+
+    // Generate a basic view from fields (placeholder - real implementation would need query definition)
+    const columns = view.fields.map((f: any) => `"${f.name}"`).join(', ')
+    return `CREATE VIEW "${viewName}" AS SELECT ${columns} FROM /* TODO: define source */;`
+  }
+
   private generateIndex(model: ModelBlock, attribute: any): string {
     const tableName = tableNameOf(model)
     const fields = attribute.args['fields'] as string[]
     const columns = fields.map((f) => columnNameOf(model, f))
     const indexName = `idx_${tableName}_${columns.join('_')}`
 
-    return `CREATE INDEX ${indexName} ON ${tableName} (${columns.join(', ')});`
+    // Index type (Hash, GIN, GiST, BRIN, SP-GiST)
+    const indexType = this.resolveIndexType(attribute.args['type'])
+
+    // Partial index (WHERE clause)
+    const whereClause = attribute.args['where']
+
+    // Sort order (ops)
+    const ops = attribute.args['ops']
+    let orderClause = ''
+    if (ops && typeof ops === 'object') {
+      const entries = Object.entries(ops)
+      if (entries.length > 0) {
+        const sortParts = entries.map(([field, direction]) => {
+          const col = columnNameOf(model, field)
+          return `${col} ${String(direction).toUpperCase()}`
+        })
+        orderClause = ` (${sortParts.join(', ')})`
+      }
+    }
+
+    const using = indexType ? ` USING ${indexType}` : ''
+    const where = whereClause ? ` WHERE ${whereClause}` : ''
+
+    if (orderClause) {
+      return `CREATE INDEX ${indexName} ON ${tableName}${using}${orderClause};`
+    }
+
+    return `CREATE INDEX ${indexName} ON ${tableName}${using} (${columns.join(', ')});${where}`
+  }
+
+  private resolveIndexType(type: any): string | null {
+    if (!type) return null
+    const typeName = String(type).toUpperCase()
+    const supportedTypes: Record<string, string> = {
+      'HASH': 'HASH',
+      'GIN': 'GIN',
+      'GIST': 'GiST',
+      'BRIN': 'BRIN',
+      'SPGIST': 'SP-GiST',
+      'SP-GIST': 'SP-GiST',
+    }
+
+    // Validate per provider
+    const type_ = supportedTypes[typeName]
+    if (!type_) return null
+
+    if (this.provider === 'sqlite') {
+      // SQLite only supports B-tree (default)
+      return null
+    }
+    if (this.provider === 'mysql' && !['HASH'].includes(type_)) {
+      // MySQL only supports B-tree and Hash
+      return null
+    }
+
+    return type_
   }
 
   private generateUniqueIndex(model: ModelBlock, attribute: any): string {
