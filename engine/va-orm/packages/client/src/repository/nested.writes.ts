@@ -48,6 +48,19 @@ export class NestedWriter {
     this.quote = quote
   }
 
+  /**
+   * Quote a COLUMN identifier. VA-ORM DDL is unquoted so the DB folds
+   * identifiers to lowercase — columns must be lowercased to match
+   * (e.g. userId → "userid"), consistent with SELECT/INSERT elsewhere.
+   * Safe on MySQL/SQLite (column resolution is case-insensitive there).
+   * NOTE: table names are intentionally NOT lowercased (MySQL tables
+   * are case-sensitive) — schemas targeting PostgreSQL should use
+   * lowercase table names (e.g. @@map("customers")).
+   */
+  private col(name: string): string {
+    return this.quote(name.toLowerCase())
+  }
+
   private metaOf(model: string): ModelMeta {
     const meta = this.registry.get(model)
     if (!meta) throw new Error(`Model "${model}" is not registered`)
@@ -71,7 +84,7 @@ export class NestedWriter {
     }
     const values = Object.values(data)
     const placeholders = values.map((_, i) => this.driver.getPlaceholder(i + 1))
-    const quotedColumns = columns.map((c) => this.quote(c))
+    const quotedColumns = columns.map((c) => this.col(c))
     const sql = `INSERT INTO ${this.quote(model.table)} (${quotedColumns.join(', ')}) VALUES (${placeholders.join(', ')}) RETURNING *`
     const result = await this.driver.query(sql, values)
     return result.rows[0]
@@ -272,8 +285,8 @@ export class NestedWriter {
       const childPk = this.uniqueKeyOf(where)
       const parentIsA = meta.pkModel < meta.targetModel
       const sql =
-        `DELETE FROM ${this.quote(meta.joinTable!)} WHERE ${this.quote(parentIsA ? 'A' : 'B')} = ${this.driver.getPlaceholder(1)} ` +
-        `AND ${this.quote(parentIsA ? 'B' : 'A')} = ${this.driver.getPlaceholder(2)}`
+        `DELETE FROM ${this.quote(meta.joinTable!)} WHERE ${this.col(parentIsA ? 'A' : 'B')} = ${this.driver.getPlaceholder(1)} ` +
+        `AND ${this.col(parentIsA ? 'B' : 'A')} = ${this.driver.getPlaceholder(2)}`
       await this.driver.execute(sql, [parentRow[parentPk], found[childPk]])
       return
     }
@@ -300,7 +313,7 @@ export class NestedWriter {
     if (meta.kind === 'many-to-many-implicit' && meta.joinTable) {
       const parentIsA = meta.pkModel < meta.targetModel
       await this.driver.execute(
-        `DELETE FROM ${this.quote(meta.joinTable!)} WHERE ${this.quote(parentIsA ? 'A' : 'B')} = ${this.driver.getPlaceholder(1)}`,
+        `DELETE FROM ${this.quote(meta.joinTable!)} WHERE ${this.col(parentIsA ? 'A' : 'B')} = ${this.driver.getPlaceholder(1)}`,
         [parentRow[parentPk]]
       )
     } else if (meta.isFkHolder) {
@@ -362,7 +375,7 @@ export class NestedWriter {
     const params: any[] = []
     const clauses = entries.map(([key, value], i) => {
       params.push(value)
-      return `${this.quote(key)} = ${this.driver.getPlaceholder(i + 1)}`
+      return `${this.col(key)} = ${this.driver.getPlaceholder(i + 1)}`
     })
     const sql = `SELECT * FROM ${this.quote(model.table)}${clauses.length > 0 ? ` WHERE ${clauses.join(' AND ')}` : ''}`
     const result = await this.driver.query(sql, params)
@@ -381,7 +394,7 @@ export class NestedWriter {
     const paramsWithWhere = [...params]
     const whereParts = whereEntries.map(([key], i) => {
       paramsWithWhere.push(where[key])
-      return `${this.quote(key)} = ${this.driver.getPlaceholder(nextIndex + i)}`
+      return `${this.col(key)} = ${this.driver.getPlaceholder(nextIndex + i)}`
     })
     const sql = `UPDATE ${this.quote(model.table)} SET ${setParts.join(', ')} WHERE ${whereParts.join(' AND ')}`
     await this.driver.execute(sql, paramsWithWhere)
@@ -400,7 +413,7 @@ export class NestedWriter {
     const a = parentIsA ? parentRow[parentPk] : childRow[childPk]
     const b = parentIsA ? childRow[childPk] : parentRow[parentPk]
     const sql =
-      `INSERT INTO ${this.quote(meta.joinTable!)} (${this.quote('A')}, ${this.quote('B')}) VALUES ` +
+      `INSERT INTO ${this.quote(meta.joinTable!)} (${this.col('A')}, ${this.col('B')}) VALUES ` +
       `(${this.driver.getPlaceholder(1)}, ${this.driver.getPlaceholder(2)}) ON CONFLICT DO NOTHING`
     await this.driver.execute(sql, [a, b])
   }

@@ -129,8 +129,8 @@ describe('ClientGenerator', () => {
 
   it('should generate imports', () => {
     const output = generator.generate(testAst)
-    expect(output).toContain("import { VaClient } from '@exnest/va-client'")
-    expect(output).toContain("import { ModelDelegate } from '@exnest/va-client'")
+    expect(output).toContain("import { VaClient } from '@exnest/va'")
+    expect(output).toContain("import { ModelDelegate } from '@exnest/va'")
   })
 })
 

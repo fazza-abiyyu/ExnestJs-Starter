@@ -30,3 +30,4 @@ export * from './pagination/adapters/graphql.adapter.js'
 
 export { VaClient } from './core/va.client.js'
 export type { VaClientOptions } from './core/va.client.js'
+export type { SchemaAST } from '../../../schema/src/schema.types.js'

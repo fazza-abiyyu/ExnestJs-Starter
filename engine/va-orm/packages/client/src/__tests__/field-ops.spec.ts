@@ -45,6 +45,12 @@ describe('buildSetClause', () => {
     expect(params).toEqual(['Jane'])
   })
 
+  it('should lowercase camelCase columns to match folded DDL', () => {
+    const { setParts, params } = buildSetClause({ updatedAt: new Date(0) }, ph)
+    expect(setParts).toEqual(['"updatedat" = $1'])
+    expect(params).toEqual([new Date(0)])
+  })
+
   it('should mix plain and operations', () => {
     const { setParts, params, nextIndex } = buildSetClause(
       { name: 'John', age: { increment: 1 } },

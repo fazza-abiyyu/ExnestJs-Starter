@@ -14,9 +14,9 @@ export class ClientGenerator {
   generate(ast: SchemaAST): string {
     this.w = new CodeWriter()
 
-    this.w.line(`import { VaClient } from '@exnest/va-client';`)
-    this.w.line(`import { ModelDelegate } from '@exnest/va-client';`)
-    this.w.line(`import type { SchemaAST } from '@exnest/va-schema';`)
+    this.w.line(`import { VaClient } from '@exnest/va';`)
+    this.w.line(`import { ModelDelegate } from '@exnest/va';`)
+    this.w.line(`import type { SchemaAST } from '@exnest/va';`)
     this.w.line(`import type {`)
     for (const model of ast.model) {
       this.w.line(`  ${model.name},`)

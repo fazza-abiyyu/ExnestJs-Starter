@@ -96,7 +96,7 @@ describe('ModelDelegate nested create', () => {
 
     const queries = driver.getQueries()
     expect(queries[1].sql).toContain('SELECT * FROM "posts"')
-    expect(queries[2].sql).toContain('UPDATE "posts" SET "userId"')
+    expect(queries[2].sql).toContain('UPDATE "posts" SET "userid"')
     expect(queries[2].params).toEqual([1, 10])
   })
 
@@ -130,7 +130,7 @@ describe('ModelDelegate nested create', () => {
 
     const queries = driver.getQueries()
     expect(queries.some((q) => q.sql.startsWith('INSERT INTO "posts"'))).toBe(false)
-    expect(queries[queries.length - 2].sql).toContain('UPDATE "posts" SET "userId"')
+    expect(queries[queries.length - 2].sql).toContain('UPDATE "posts" SET "userid"')
   })
 
   it('should connectOrCreate new record', async () => {
@@ -186,7 +186,7 @@ describe('ModelDelegate nested update', () => {
 
     const queries = driver.getQueries()
     expect(queries[0].sql).toContain('SELECT * FROM "users"')
-    expect(queries[queries.length - 1].sql).toContain('UPDATE "posts" SET "userId"')
+    expect(queries[queries.length - 1].sql).toContain('UPDATE "posts" SET "userid"')
     expect(queries[queries.length - 1].params).toEqual([null, 10])
   })
 
@@ -204,7 +204,7 @@ describe('ModelDelegate nested update', () => {
     })
 
     const queries = driver.getQueries()
-    expect(queries[1].sql).toContain('UPDATE "posts" SET "userId"')
+    expect(queries[1].sql).toContain('UPDATE "posts" SET "userid"')
     expect(queries[1].params).toEqual([null, 1])
     expect(queries[queries.length - 1].params).toEqual([1, 11])
   })

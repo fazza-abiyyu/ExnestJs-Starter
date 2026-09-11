@@ -26,21 +26,25 @@ export function buildSetClause(
   let paramIndex = 1
 
   for (const [column, value] of Object.entries(data)) {
+    // VA-ORM DDL is unquoted → DB folds identifiers to lowercase.
+    // Lowercase here so UPDATE matches the folded column names
+    // (e.g. updatedAt → "updatedat"), consistent with SELECT/INSERT.
+    const col = quote(column.toLowerCase())
     if (isFieldOperation(value)) {
       if (value.set !== undefined) {
-        setParts.push(`${quote(column)} = ${getPlaceholder(paramIndex++)}`)
+        setParts.push(`${col} = ${getPlaceholder(paramIndex++)}`)
         params.push(value.set)
       }
       if (value.increment !== undefined) {
-        setParts.push(`${quote(column)} = ${quote(column)} + ${getPlaceholder(paramIndex++)}`)
+        setParts.push(`${col} = ${col} + ${getPlaceholder(paramIndex++)}`)
         params.push(value.increment)
       }
       if (value.decrement !== undefined) {
-        setParts.push(`${quote(column)} = ${quote(column)} - ${getPlaceholder(paramIndex++)}`)
+        setParts.push(`${col} = ${col} - ${getPlaceholder(paramIndex++)}`)
         params.push(value.decrement)
       }
     } else {
-      setParts.push(`${quote(column)} = ${getPlaceholder(paramIndex++)}`)
+      setParts.push(`${col} = ${getPlaceholder(paramIndex++)}`)
       params.push(value)
     }
   }
