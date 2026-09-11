@@ -6,3 +6,9 @@ coverage/
 .env
 plan/*
 engine/va-orm/test/
+
+# tsc emit spillover (schema sources pulled into client build)
+engine/va-orm/packages/schema/src/*.js
+engine/va-orm/packages/schema/src/*.d.ts
+engine/va-orm/packages/schema/src/*.js.map
+engine/va-orm/packages/schema/src/*.d.ts.map
