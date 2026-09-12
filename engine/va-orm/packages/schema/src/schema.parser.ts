@@ -277,8 +277,16 @@ export class SchemaParser {
   }
 
   private parseFieldAttribute(): FieldAttribute {
-    const name = this.current
+    let name: string = this.current
     this.advance()
+
+    // Dotted native type: @db.Text, @db.VarChar(255). Without this the
+    // '.' becomes a phantom field in the model loop.
+    if (this.current === '.') {
+      this.advance()
+      name += '.' + this.current
+      this.advance()
+    }
 
     const args: Record<string, any> = {}
 

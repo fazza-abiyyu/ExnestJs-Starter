@@ -236,4 +236,32 @@ describe('SchemaParser', () => {
       expect(() => parser.parse(schema)).toThrow()
     })
   })
+
+  describe('native type attributes', () => {
+    it('should parse @db.Text without phantom fields', () => {
+      const schema = `
+        model ProviderCookie {
+          id String @id @default(uuid())
+          valueEnc String @db.Text
+          valueHash String
+        }
+      `
+      const ast = parser.parse(schema)
+      const fields = ast.model[0].fields
+      expect(fields.map((f) => f.name)).toEqual(['id', 'valueEnc', 'valueHash'])
+      const valueEnc = fields.find((f) => f.name === 'valueEnc')!
+      expect(valueEnc.attributes.map((a) => a.name)).toContain('@db.Text')
+    })
+
+    it('should parse @db.VarChar(255) with args', () => {
+      const schema = `
+        model User {
+          name String @db.VarChar(255)
+        }
+      `
+      const ast = parser.parse(schema)
+      const name = ast.model[0].fields[0]
+      expect(name.attributes.map((a) => a.name)).toContain('@db.VarChar')
+    })
+  })
 })
