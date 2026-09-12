@@ -61,6 +61,21 @@ export class NestedWriter {
     return this.quote(name.toLowerCase())
   }
 
+  /**
+   * App-level field carrying @updatedAt for a model, if the registry knows it.
+   */
+  private updatedAtField(model: ModelMeta): string | null {
+    const field = model.fields?.find((f) => f.attributes.some((a) => a.name === '@updatedAt'))
+    return field?.name ?? null
+  }
+
+  /** Fill @updatedAt with now() when absent — explicit values always win. */
+  private touchTimestamps(model: ModelMeta, data: Record<string, any>): Record<string, any> {
+    const field = this.updatedAtField(model)
+    if (!field || field in data) return data
+    return { ...data, [field]: new Date() }
+  }
+
   private metaOf(model: string): ModelMeta {
     const meta = this.registry.get(model)
     if (!meta) throw new Error(`Model "${model}" is not registered`)
@@ -78,11 +93,12 @@ export class NestedWriter {
   }
 
   async insertRow(model: ModelMeta, data: Record<string, any>): Promise<Record<string, any>> {
-    const columns = Object.keys(data)
+    const touched = this.touchTimestamps(model, data)
+    const columns = Object.keys(touched)
     if (columns.length === 0) {
       throw new Error(`Cannot create ${model.name} with empty data`)
     }
-    const values = Object.values(data)
+    const values = Object.values(touched)
     const placeholders = values.map((_, i) => this.driver.getPlaceholder(i + 1))
     const quotedColumns = columns.map((c) => this.col(c))
     const sql = `INSERT INTO ${this.quote(model.table)} (${quotedColumns.join(', ')}) VALUES (${placeholders.join(', ')}) RETURNING *`
@@ -387,10 +403,12 @@ export class NestedWriter {
     where: Record<string, any>,
     data: Record<string, any>
   ): Promise<void> {
-    const setEntries = Object.entries(data)
+    // Preserve empty-update no-op; only touch timestamps on real writes.
+    const touched = Object.keys(data).length === 0 ? data : this.touchTimestamps(model, data)
+    const setEntries = Object.entries(touched)
     if (setEntries.length === 0) return
     const whereEntries = Object.entries(where)
-    const { setParts, params, nextIndex } = buildSetClause(data, (i) => this.driver.getPlaceholder(i), this.quote)
+    const { setParts, params, nextIndex } = buildSetClause(touched, (i) => this.driver.getPlaceholder(i), this.quote)
     const paramsWithWhere = [...params]
     const whereParts = whereEntries.map(([key], i) => {
       paramsWithWhere.push(where[key])

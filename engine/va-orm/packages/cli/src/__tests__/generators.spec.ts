@@ -177,6 +177,21 @@ describe('SqlGenerator', () => {
       const output = generator.generateDDL(astWithIndex)
       expect(output).toContain('CREATE INDEX')
     })
+
+    it('should generate DEFAULT NOW() for @updatedAt', () => {
+      const astWithUpdatedAt: SchemaAST = {
+        ...testAst,
+        model: [{
+          ...testAst.model[0],
+          fields: [
+            ...testAst.model[0].fields,
+            { name: 'updatedAt', type: 'DateTime', isArray: false, isOptional: false, attributes: [{ name: '@updatedAt', args: {} }] },
+          ],
+        }],
+      }
+      const output = generator.generateDDL(astWithUpdatedAt)
+      expect(output).toContain('updatedAt TIMESTAMP NOT NULL DEFAULT NOW()')
+    })
   })
 
   describe('MySQL', () => {
@@ -190,6 +205,21 @@ describe('SqlGenerator', () => {
     it('should use AUTO_INCREMENT instead of GENERATED ALWAYS', () => {
       const output = generator.generateDDL(testAst)
       expect(output).toContain('AUTO_INCREMENT')
+    })
+
+    it('should generate DEFAULT CURRENT_TIMESTAMP for @updatedAt', () => {
+      const astWithUpdatedAt: SchemaAST = {
+        ...testAst,
+        model: [{
+          ...testAst.model[0],
+          fields: [
+            ...testAst.model[0].fields,
+            { name: 'updatedAt', type: 'DateTime', isArray: false, isOptional: false, attributes: [{ name: '@updatedAt', args: {} }] },
+          ],
+        }],
+      }
+      const output = generator.generateDDL(astWithUpdatedAt)
+      expect(output).toContain('updatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP')
     })
   })
 

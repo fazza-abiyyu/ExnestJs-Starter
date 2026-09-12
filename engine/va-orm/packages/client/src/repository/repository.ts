@@ -6,7 +6,8 @@ import { ExpressionBuilder } from '../core/expression.js'
 import { buildSetClause } from './field.ops.js'
 
 export class Repository<T extends Record<string, any>> {
-  private options: Required<RepositoryOptions>
+  private options: Required<Omit<RepositoryOptions, 'updatedAtField'>>
+  private updatedAtField?: string
 
   constructor(
     private driver: DatabaseDriver,
@@ -18,13 +19,25 @@ export class Repository<T extends Record<string, any>> {
       softDeleteColumn: options.softDeleteColumn ?? 'deleted_at',
       camelToSnake: options.camelToSnake ?? true,
     }
+    this.updatedAtField = options.updatedAtField
+  }
+
+  /**
+   * Fill @updatedAt-managed field with now() when the caller did not set it.
+   * Explicit values always win. Shallow-copies so caller objects are untouched.
+   */
+  private touch<D extends Record<string, any>>(data: D): D {
+    const field = this.updatedAtField
+    if (!field || field in data) return data
+    return { ...data, [field]: new Date() }
   }
 
   // ============ CREATE ============
 
   async create(data: Partial<T>): Promise<T> {
-    const columns = Object.keys(data)
-    const values = Object.values(data)
+    const touched = this.touch({ ...(data as Record<string, any>) })
+    const columns = Object.keys(touched)
+    const values = Object.values(touched)
     const placeholders = values.map((_, i) => this.driver.getPlaceholder(i + 1))
 
     const sql = `INSERT INTO ${this.tableName} (${columns.join(', ')}) VALUES (${placeholders.join(', ')}) RETURNING *`
@@ -35,10 +48,11 @@ export class Repository<T extends Record<string, any>> {
   async createMany(data: Partial<T>[]): Promise<T[]> {
     if (data.length === 0) return []
 
-    const columns = Object.keys(data[0])
+    const touched = data.map((item) => this.touch({ ...(item as Record<string, any>) }))
+    const columns = Object.keys(touched[0])
     const results: T[] = []
 
-    for (const item of data) {
+    for (const item of touched) {
       const values = Object.values(item)
       const placeholders = values.map((_, i) => this.driver.getPlaceholder(i + 1))
       const sql = `INSERT INTO ${this.tableName} (${columns.join(', ')}) VALUES (${placeholders.join(', ')}) RETURNING *`
@@ -120,7 +134,7 @@ export class Repository<T extends Record<string, any>> {
 
   async update(where: Partial<T>, data: Partial<T>): Promise<T> {
     const { setParts, params: setValues, nextIndex } = buildSetClause(
-      data as Record<string, any>,
+      this.touch({ ...(data as Record<string, any>) }),
       (i) => this.driver.getPlaceholder(i)
     )
 
@@ -135,7 +149,7 @@ export class Repository<T extends Record<string, any>> {
 
   async updateMany(where: Partial<T>, data: Partial<T>): Promise<number> {
     const { setParts, params: setValues, nextIndex } = buildSetClause(
-      data as Record<string, any>,
+      this.touch({ ...(data as Record<string, any>) }),
       (i) => this.driver.getPlaceholder(i)
     )
 
@@ -149,6 +163,8 @@ export class Repository<T extends Record<string, any>> {
   }
 
   // ============ UPSERT ============
+  // NOTE: upsert intentionally does NOT auto-touch updatedAt — the caller
+  // controls updateColumns explicitly, so implicit columns would be inconsistent.
 
   async upsert(data: Partial<T>, conflictColumns: string[], updateColumns: string[]): Promise<T> {
     const columns = Object.keys(data)

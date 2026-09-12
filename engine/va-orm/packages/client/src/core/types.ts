@@ -148,6 +148,8 @@ export interface ModelMeta {
   table: string
   primaryKey: string
   relations: Map<string, RelationMeta>
+  /** Optional schema fields — enables @updatedAt auto-touch when present. */
+  fields?: Array<{ name: string; attributes: Array<{ name: string }> }>
 }
 
 export type ScalarFilter<T = any> =
@@ -249,6 +251,8 @@ export interface RepositoryOptions {
   softDelete?: boolean
   softDeleteColumn?: string
   camelToSnake?: boolean
+  /** App-level field name carrying @updatedAt semantics — auto-set to now on write when absent. */
+  updatedAtField?: string
 }
 
 // ============ AGGREGATE ============

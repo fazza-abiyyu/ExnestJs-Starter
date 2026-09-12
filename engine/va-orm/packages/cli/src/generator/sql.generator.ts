@@ -200,6 +200,11 @@ export class SqlGenerator {
           parts.push(`DEFAULT ${defaultValue}`)
         }
       }
+    } else if (field.attributes.some(a => a.name === '@updatedAt')) {
+      // @updatedAt without explicit @default: DB fills creation time so raw
+      // SQL / external writers never hit NOT NULL. Runtime (Repository /
+      // NestedWriter) refreshes it on every write.
+      parts.push(`DEFAULT ${this.provider === 'postgres' ? 'NOW()' : 'CURRENT_TIMESTAMP'}`)
     }
 
     return parts.join(' ')

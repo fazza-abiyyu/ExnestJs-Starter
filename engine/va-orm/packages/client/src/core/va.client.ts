@@ -19,6 +19,8 @@ export interface VaClientModelOptions {
   tableName?: string
   primaryKey?: string
   softDelete?: boolean
+  /** Explicit @updatedAt field — wins over schema auto-detection. */
+  updatedAtField?: string
 }
 
 export interface VaClientOptions {
@@ -29,6 +31,19 @@ export interface VaClientOptions {
   models?: Record<string, { tableName: string; softDelete?: boolean } & { primaryKey?: string }>
   schema?: SchemaAST
   modelOptions?: Record<string, VaClientModelOptions>
+}
+
+/**
+ * Find the app-level field carrying @updatedAt for a model (case-insensitive).
+ * Pure helper — exported for tests.
+ */
+export function findUpdatedAtField(
+  schema: SchemaAST | undefined,
+  modelName: string,
+): string | undefined {
+  const wanted = modelName.toLowerCase()
+  const model = schema?.model.find((m) => m.name === modelName || m.name.toLowerCase() === wanted)
+  return model?.fields.find((f) => f.attributes.some((a) => a.name === '@updatedAt'))?.name
 }
 
 export class VaClient {
@@ -54,8 +69,13 @@ export class VaClient {
     // Register repositories for models
     if (options.models) {
       for (const [name, model] of Object.entries(options.models)) {
+        const key = name.charAt(0).toLowerCase() + name.slice(1)
+        const override = options.modelOptions?.[name] ?? options.modelOptions?.[key]
+        const updatedAtField =
+          override?.updatedAtField ?? findUpdatedAtField(options.schema, name)
         this.repositories.set(name, new Repository(this.driver, model.tableName, {
           softDelete: model.softDelete,
+          ...(updatedAtField ? { updatedAtField } : {}),
         }))
       }
     }
@@ -76,7 +96,7 @@ export class VaClient {
             modelRelations.set(info.field, { ...info })
           }
         }
-        this.modelRegistry.set(model.name, { name: model.name, table, primaryKey, relations: modelRelations })
+        this.modelRegistry.set(model.name, { name: model.name, table, primaryKey, relations: modelRelations, fields: model.fields })
         this.modelRegistry.set(key, this.modelRegistry.get(model.name)!)
       }
     }
