@@ -94,7 +94,7 @@ export class SqlGenerator {
     }
     const parts = [...columns, ...constraints]
 
-    return `CREATE TABLE ${tableName} (\n  ${parts.join(',\n  ')}\n);`
+    return `CREATE TABLE IF NOT EXISTS ${tableName} (\n  ${parts.join(',\n  ')}\n);`
   }
 
   private generateForeignKeyIndexes(model: ModelBlock, modelNames: Set<string>, allModels: ModelBlock[]): string[] {
@@ -117,7 +117,7 @@ export class SqlGenerator {
       const cols = info.fkFields.map((f) => columnNameOf(model, f))
       if (declared.has([...cols].sort().join('|'))) continue
       statements.push(
-        `CREATE INDEX "fk_${tableName}_${cols.join('_')}" ON ${tableName} (${cols.join(', ')});`
+        `CREATE INDEX IF NOT EXISTS "fk_${tableName}_${cols.join('_')}" ON ${tableName} (${cols.join(', ')});`
       )
     }
     return statements
@@ -156,12 +156,12 @@ export class SqlGenerator {
       return 'TEXT'
     }
     const lines = [
-      `CREATE TABLE "${info.joinTable}" (`,
+      `CREATE TABLE IF NOT EXISTS "${info.joinTable}" (`,
       `  "A" ${pkTypeOf(first)} NOT NULL,`,
       `  "B" ${pkTypeOf(second)} NOT NULL,`,
       '  PRIMARY KEY ("A", "B")',
       ');',
-      `CREATE INDEX "${info.joinTable}_B_idx" ON "${info.joinTable}"("B");`,
+      `CREATE INDEX IF NOT EXISTS "${info.joinTable}_B_idx" ON "${info.joinTable}"("B");`,
     ]
     return lines.join('\n')
   }
@@ -415,10 +415,10 @@ export class SqlGenerator {
     const where = whereClause ? ` WHERE ${whereClause}` : ''
 
     if (orderClause) {
-      return `CREATE INDEX ${indexName} ON ${tableName}${using}${orderClause};`
+      return `CREATE INDEX IF NOT EXISTS ${indexName} ON ${tableName}${using}${orderClause};`
     }
 
-    return `CREATE INDEX ${indexName} ON ${tableName}${using} (${columns.join(', ')});${where}`
+    return `CREATE INDEX IF NOT EXISTS ${indexName} ON ${tableName}${using} (${columns.join(', ')});${where}`
   }
 
   private resolveIndexType(type: any): string | null {
@@ -455,7 +455,7 @@ export class SqlGenerator {
     const columns = fields.map((f) => columnNameOf(model, f))
     const indexName = `uniq_${tableName}_${columns.join('_')}`
 
-    return `CREATE UNIQUE INDEX ${indexName} ON ${tableName} (${columns.join(', ')});`
+    return `CREATE UNIQUE INDEX IF NOT EXISTS ${indexName} ON ${tableName} (${columns.join(', ')});`
   }
 
   private toSnakeCase(str: string): string {

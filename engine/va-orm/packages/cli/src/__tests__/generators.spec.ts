@@ -140,8 +140,8 @@ describe('SqlGenerator', () => {
 
     it('should generate CREATE TABLE', () => {
       const output = generator.generateDDL(testAst)
-      expect(output).toContain('CREATE TABLE user')
-      expect(output).toContain('CREATE TABLE post')
+      expect(output).toContain('CREATE TABLE IF NOT EXISTS user')
+      expect(output).toContain('CREATE TABLE IF NOT EXISTS post')
     })
 
     it('should generate column definitions', () => {
@@ -184,7 +184,7 @@ describe('SqlGenerator', () => {
 
     it('should generate CREATE TABLE', () => {
       const output = generator.generateDDL(testAst)
-      expect(output).toContain('CREATE TABLE user')
+      expect(output).toContain('CREATE TABLE IF NOT EXISTS user')
     })
 
     it('should use AUTO_INCREMENT instead of GENERATED ALWAYS', () => {
@@ -198,7 +198,7 @@ describe('SqlGenerator', () => {
 
     it('should generate CREATE TABLE', () => {
       const output = generator.generateDDL(testAst)
-      expect(output).toContain('CREATE TABLE user')
+      expect(output).toContain('CREATE TABLE IF NOT EXISTS user')
     })
   })
 })
