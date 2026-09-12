@@ -95,7 +95,7 @@ describe('map DDL', () => {
   it('should use mapped table and column names', () => {
     const ast = parse(MAPPED_SCHEMA)
     const sql = new SqlGenerator('postgres').generateDDL(ast)
-    expect(sql).toContain('CREATE TABLE app_users')
+    expect(sql).toContain('CREATE TABLE IF NOT EXISTS app_users')
     expect(sql).toContain('tenant_id')
     expect(sql).toContain('first_name')
     expect(sql).toContain('email_address')
@@ -123,8 +123,8 @@ model Post {
 }
 `)
     const sql = new SqlGenerator('postgres').generateDDL(ast)
-    expect(sql).toContain('CREATE TABLE app_users')
-    expect(sql).toContain('CREATE TABLE blog_posts')
+    expect(sql).toContain('CREATE TABLE IF NOT EXISTS app_users')
+    expect(sql).toContain('CREATE TABLE IF NOT EXISTS blog_posts')
     expect(sql).toContain('FOREIGN KEY (author_id) REFERENCES app_users(id) ON DELETE CASCADE')
   })
 })

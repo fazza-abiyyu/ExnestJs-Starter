@@ -233,7 +233,7 @@ describe('relation DDL', () => {
   it('should auto-index FK columns', () => {
     const ast = parse(BLOG_SCHEMA)
     const sql = new SqlGenerator('postgres').generateDDL(ast)
-    expect(sql).toContain('CREATE INDEX "fk_post_userId" ON post (userId);')
+    expect(sql).toContain('CREATE INDEX IF NOT EXISTS "fk_post_userId" ON post (userId);')
   })
 
   it('should skip auto-index when user declared the same index', () => {
@@ -253,7 +253,7 @@ model Post {
 `)
     const sql = new SqlGenerator('postgres').generateDDL(ast)
     expect(sql).not.toContain('fk_post_userId')
-    expect(sql).toContain('CREATE INDEX idx_post_userId ON post (userId);')
+    expect(sql).toContain('CREATE INDEX IF NOT EXISTS idx_post_userId ON post (userId);')
   })
 
   it('should emit implicit M:N join table', () => {    const ast = parse(`
@@ -269,7 +269,7 @@ model Tag {
 }
 `)
     const sql = new SqlGenerator('postgres').generateDDL(ast)
-    expect(sql).toContain('CREATE TABLE "_PostToTag"')
+    expect(sql).toContain('CREATE TABLE IF NOT EXISTS "_PostToTag"')
     expect(sql).toContain('"_PostToTag_B_idx"')
   })
 })
