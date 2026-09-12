@@ -4,12 +4,14 @@
 
 import { SchemaParser } from '../../../schema/src/schema.parser.js'
 import { SqlGenerator } from '../generator/sql.generator.js'
-import { createDriverFromUrl, requireDatabaseUrl, datasourceToProvider } from './driver.factory.js'
+import { diffStatements } from '../generator/schema.differ.js'
+import { createDriverFromUrl, requireDatabaseUrl, datasourceToProvider, detectProvider } from './driver.factory.js'
 import * as fs from 'fs/promises'
 import * as path from 'path'
 
 export interface PushOptions {
   schema?: string
+  dryRun?: boolean
 }
 
 export async function pushCommand(options: PushOptions): Promise<void> {
@@ -23,21 +25,33 @@ export async function pushCommand(options: PushOptions): Promise<void> {
   const generator = new SqlGenerator(datasourceToProvider(datasourceProvider))
   const ddl = generator.generateDDL(ast)
 
-  const statements = ddl
-    .split(';')
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0 && !s.startsWith('--'))
-
   const connectionString = requireDatabaseUrl()
   const driver = await createDriverFromUrl(connectionString)
 
   try {
-    for (const statement of statements) {
-      await driver.execute(statement)
-      const firstLine = statement.split('\n')[0]
-      console.log(`  ✓ Executed: ${firstLine.slice(0, 80)}`)
+    const provider = detectProvider(connectionString)
+    const { statements, warnings } = await diffStatements(ddl, driver, provider)
+
+    if (options.dryRun) {
+      console.log('-- dry run: statements that would execute --')
+      for (const statement of statements) {
+        console.log(statement + ';')
+      }
+    } else {
+      for (const statement of statements) {
+        await driver.execute(statement)
+        const firstLine = statement.split('\n')[0]
+        console.log(`  ✓ Executed: ${firstLine.slice(0, 80)}`)
+      }
     }
-    console.log('\x1b[32m✓ Schema pushed successfully\x1b[0m')
+    for (const warning of warnings) {
+      console.log(`  ! Warning: ${warning}`)
+    }
+    console.log(
+      options.dryRun
+        ? '\x1b[32m✓ Dry run complete (nothing executed)\x1b[0m'
+        : '\x1b[32m✓ Schema pushed successfully\x1b[0m',
+    )
   } finally {
     await driver.close()
   }

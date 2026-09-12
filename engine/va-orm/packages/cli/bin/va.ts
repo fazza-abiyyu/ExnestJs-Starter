@@ -41,7 +41,7 @@ function showHelp() {
       resolve <name> --to <state>      Mark migration applied|rolled-back
 
     db                                 Direct database commands
-      push                             Push va.schema DDL directly
+      push                             Push va.schema DDL directly (diffs + alters drift)
       pull                             Introspect database to schema
 
   Examples:
@@ -55,6 +55,7 @@ function showHelp() {
     va migrate dev add_users_table
     va migrate resolve 20240101_x --to applied
     va db push
+    va db push --dry-run               Show ALTERs without executing
     va db pull --output ./va.pulled.schema
   `)
 }
@@ -104,7 +105,7 @@ async function main() {
     case 'db': {
       const subcommand = args[1]
       if (subcommand === 'push') {
-        await pushCommand({ schema: getArg('--schema') })
+        await pushCommand({ schema: getArg('--schema'), dryRun: hasFlag('--dry-run') })
       } else if (subcommand === 'pull') {
         const schemas = getArg('--schemas')?.split(',').map((s) => s.trim()).filter(Boolean)
         await pullCommand({ output: getArg('--output'), schemas })
