@@ -31,7 +31,7 @@ describe('Repository @updatedAt', () => {
     await repo.create({ title: 'A' })
 
     const query = driver.getQueries()[0]
-    expect(query.sql).toContain('updatedAt')
+    expect(query.sql).toContain('"updatedat"')
     const dateParam = query.params!.find((p) => p instanceof Date)
     expect(dateParam).toBeInstanceOf(Date)
   })

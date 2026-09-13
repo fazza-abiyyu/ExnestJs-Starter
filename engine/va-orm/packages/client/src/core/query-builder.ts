@@ -1,7 +1,8 @@
 // VA-ORM Query Builder
 
 import type { DatabaseDriver, WhereClause, OrderClause, JoinType, SortDirection } from './types.js'
-import { ExpressionBuilder } from './expression.js'
+import { ExpressionBuilder, assertSafeOperator, assertSafeDirection, assertSafeInteger } from './expression.js'
+import { quoteColumn, quoteTable } from '../relation/quote.js'
 
 export class QueryBuilder<T = any> {
   private _select: string[] = []
@@ -81,7 +82,10 @@ export class QueryBuilder<T = any> {
   // ============ WHERE ============
 
   where(fn: (builder: ExpressionBuilder) => void): this {
-    const builder = ExpressionBuilder.create(this._placeholderFn)
+    const builder = ExpressionBuilder.create(
+      this._placeholderFn,
+      (name) => quoteColumn(this.driver, name),
+    )
     fn(builder)
     const { sql, params } = builder.build()
     if (sql) {
@@ -111,7 +115,10 @@ export class QueryBuilder<T = any> {
   }
 
   having(fn: (builder: ExpressionBuilder) => void): this {
-    const builder = ExpressionBuilder.create((i) => `?`)
+    const builder = ExpressionBuilder.create(
+      (i) => `?`,
+      (name) => quoteColumn(this.driver, name),
+    )
     fn(builder)
     const { sql, params } = builder.build()
     if (sql) {
@@ -149,6 +156,13 @@ export class QueryBuilder<T = any> {
     return this
   }
 
+  /** Quote a SELECT item, passing through `*` and function expressions. */
+  private quoteSelect(column: string): string {
+    const trimmed = column.trim()
+    if (trimmed === '*' || trimmed.includes('(')) return trimmed
+    return quoteColumn(this.driver, trimmed)
+  }
+
   // ============ BUILD SQL ============
 
   build(): { sql: string; params: any[] } {
@@ -159,18 +173,22 @@ export class QueryBuilder<T = any> {
     // SELECT
     const selectClause = this._distinct ? 'SELECT DISTINCT' : 'SELECT'
     if (this._select.length > 0) {
-      parts.push(`${selectClause} ${this._select.join(', ')}`)
+      parts.push(`${selectClause} ${this._select.map((c) => this.quoteSelect(c)).join(', ')}`)
     } else {
       parts.push(`${selectClause} *`)
     }
 
     // FROM
-    const fromTable = this._alias ? `${this._from} AS ${this._alias}` : this._from
+    const fromTable = this._alias
+      ? `${quoteTable(this.driver, this._from)} AS ${quoteTable(this.driver, this._alias)}`
+      : quoteTable(this.driver, this._from)
     parts.push(`FROM ${fromTable}`)
 
-    // JOIN
+    // JOIN (table/alias quoted; ON is a developer-supplied raw fragment)
     for (const join of this._joins) {
-      const joinTable = join.alias ? `${join.table} AS ${join.alias}` : join.table
+      const joinTable = join.alias
+        ? `${quoteTable(this.driver, join.table)} AS ${quoteTable(this.driver, join.alias)}`
+        : quoteTable(this.driver, join.table)
       if (join.type === 'cross') {
         parts.push(`CROSS JOIN ${joinTable}`)
       } else {
@@ -188,8 +206,9 @@ export class QueryBuilder<T = any> {
           params.push(...clause.value.values)
           paramIndex += clause.value.values.length
         } else {
+          assertSafeOperator(clause.operator)
           const ph = this._placeholderFn(paramIndex++)
-          whereParts.push(`${clause.column} ${clause.operator} ${ph}`)
+          whereParts.push(`${quoteColumn(this.driver, clause.column)} ${clause.operator} ${ph}`)
           params.push(clause.value)
         }
       }
@@ -198,7 +217,7 @@ export class QueryBuilder<T = any> {
 
     // GROUP BY
     if (this._groupBy.length > 0) {
-      parts.push(`GROUP BY ${this._groupBy.join(', ')}`)
+      parts.push(`GROUP BY ${this._groupBy.map((c) => quoteColumn(this.driver, c)).join(', ')}`)
     }
 
     // HAVING
@@ -219,18 +238,20 @@ export class QueryBuilder<T = any> {
     // ORDER BY
     if (this._orderBy.length > 0) {
       const orderParts = this._orderBy.map(o => {
-        const column = o.table ? `${o.table}.${o.column}` : o.column
-        return `${column} ${o.direction.toUpperCase()}`
+        const column = o.table
+          ? `${quoteTable(this.driver, o.table)}.${quoteColumn(this.driver, o.column)}`
+          : quoteColumn(this.driver, o.column)
+        return `${column} ${assertSafeDirection(o.direction)}`
       })
       parts.push(`ORDER BY ${orderParts.join(', ')}`)
     }
 
-    // LIMIT
+    // LIMIT / OFFSET (integers only — never interpolate raw values)
+    assertSafeInteger(this._limit, 'LIMIT')
+    assertSafeInteger(this._offset, 'OFFSET')
     if (this._limit !== undefined) {
       parts.push(`LIMIT ${this._limit}`)
     }
-
-    // OFFSET
     if (this._offset !== undefined) {
       parts.push(`OFFSET ${this._offset}`)
     }
@@ -284,7 +305,7 @@ export class QueryBuilder<T = any> {
     const placeholders = values.map((_, i) => builder._placeholderFn(i + 1))
 
     builder._select = []
-    builder._from = `INSERT INTO ${table} (${columns.join(', ')}) VALUES (${placeholders.join(', ')}) RETURNING *`
+    builder._from = `INSERT INTO ${quoteTable(driver, table)} (${columns.map((c) => quoteColumn(driver, c)).join(', ')}) VALUES (${placeholders.join(', ')}) RETURNING *`
 
     return builder
   }
@@ -295,10 +316,10 @@ export class QueryBuilder<T = any> {
     const builder = new QueryBuilder<T>(driver, table)
     const columns = Object.keys(data)
     const values = Object.values(data)
-    const setParts = columns.map((col, i) => `${col} = ${builder._placeholderFn(i + 1)}`)
+    const setParts = columns.map((col, i) => `${quoteColumn(driver, col)} = ${builder._placeholderFn(i + 1)}`)
 
     builder._select = []
-    builder._from = `UPDATE ${table} SET ${setParts.join(', ')}`
+    builder._from = `UPDATE ${quoteTable(driver, table)} SET ${setParts.join(', ')}`
 
     return builder
   }
@@ -308,7 +329,7 @@ export class QueryBuilder<T = any> {
   static delete(driver: DatabaseDriver, table: string): QueryBuilder {
     const builder = new QueryBuilder(driver, table)
     builder._select = []
-    builder._from = `DELETE FROM ${table}`
+    builder._from = `DELETE FROM ${quoteTable(driver, table)}`
     return builder
   }
 }

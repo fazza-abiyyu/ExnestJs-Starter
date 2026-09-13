@@ -113,7 +113,7 @@ describe('ModelDelegate select', () => {
     const posts = new ModelDelegate(driver, postModel(), registry())
     const result = await posts.findMany({ select: ['title'], include: { author: true } })
 
-    expect(driver.getQueries()[0].sql).toBe('SELECT "title", "id", "userId" FROM "posts"')
+    expect(driver.getQueries()[0].sql).toBe('SELECT "title", "id", "userid" FROM "posts"')
     expect(result).toEqual([{ title: 'A', author: { id: 1, name: 'John' } }])
   })
 
@@ -125,7 +125,7 @@ describe('ModelDelegate select', () => {
     const users = new ModelDelegate(driver, userModel(), registry())
     const result = await users.findMany({ include: { posts: { select: ['title'] } } })
 
-    expect(driver.getQueries()[1].sql).toBe('SELECT "title", "id", "userId" FROM "posts" WHERE "userId" IN ($1)')
+    expect(driver.getQueries()[1].sql).toBe('SELECT "title", "id", "userid" FROM "posts" WHERE "userid" IN ($1)')
     expect(result[0].posts).toEqual([{ title: 'A' }])
   })
 

@@ -45,6 +45,10 @@ export class MockDriver {
   getPlaceholder(index: number): string {
     return `$${index}`
   }
+
+  getDialect(): 'postgres' {
+    return 'postgres'
+  }
 }
 
 ConnectionPool.registerFactory('sqlite', () => new MockDriver())

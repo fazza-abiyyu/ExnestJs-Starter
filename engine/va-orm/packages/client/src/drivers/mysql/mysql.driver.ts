@@ -81,6 +81,7 @@ export class MysqlDriver implements DatabaseDriver {
       transaction: <R>(nested: (driver: DatabaseDriver) => Promise<R>) => nested(txDriver),
       close: async () => {},
       getPlaceholder: (_index: number) => '?',
+      getDialect: () => 'mysql' as const,
     }
     try {
       await connection.beginTransaction()
@@ -97,6 +98,10 @@ export class MysqlDriver implements DatabaseDriver {
 
   async close(): Promise<void> {
     await this.pool.end()
+  }
+
+  getDialect(): 'mysql' {
+    return 'mysql'
   }
 
   getPlaceholder(_index: number): string {

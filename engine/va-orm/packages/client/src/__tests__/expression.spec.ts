@@ -9,7 +9,7 @@ describe('ExpressionBuilder', () => {
       const builder = new ExpressionBuilder()
       builder.eq('name', 'John')
       const { sql, params } = builder.build()
-      expect(sql).toBe('name = $1')
+      expect(sql).toBe('"name" = $1')
       expect(params).toEqual(['John'])
     })
 
@@ -17,7 +17,7 @@ describe('ExpressionBuilder', () => {
       const builder = new ExpressionBuilder()
       builder.neq('status', 'deleted')
       const { sql, params } = builder.build()
-      expect(sql).toBe('status != $1')
+      expect(sql).toBe('"status" != $1')
       expect(params).toEqual(['deleted'])
     })
 
@@ -25,7 +25,7 @@ describe('ExpressionBuilder', () => {
       const builder = new ExpressionBuilder()
       builder.gt('age', 18)
       const { sql, params } = builder.build()
-      expect(sql).toBe('age > $1')
+      expect(sql).toBe('"age" > $1')
       expect(params).toEqual([18])
     })
 
@@ -33,7 +33,7 @@ describe('ExpressionBuilder', () => {
       const builder = new ExpressionBuilder()
       builder.gte('score', 100)
       const { sql, params } = builder.build()
-      expect(sql).toBe('score >= $1')
+      expect(sql).toBe('"score" >= $1')
       expect(params).toEqual([100])
     })
 
@@ -41,7 +41,7 @@ describe('ExpressionBuilder', () => {
       const builder = new ExpressionBuilder()
       builder.lt('price', 50)
       const { sql, params } = builder.build()
-      expect(sql).toBe('price < $1')
+      expect(sql).toBe('"price" < $1')
       expect(params).toEqual([50])
     })
 
@@ -49,7 +49,7 @@ describe('ExpressionBuilder', () => {
       const builder = new ExpressionBuilder()
       builder.lte('quantity', 0)
       const { sql, params } = builder.build()
-      expect(sql).toBe('quantity <= $1')
+      expect(sql).toBe('"quantity" <= $1')
       expect(params).toEqual([0])
     })
   })
@@ -59,7 +59,7 @@ describe('ExpressionBuilder', () => {
       const builder = new ExpressionBuilder()
       builder.like('name', '%John%')
       const { sql, params } = builder.build()
-      expect(sql).toBe('name LIKE $1')
+      expect(sql).toBe('"name" LIKE $1')
       expect(params).toEqual(['%John%'])
     })
 
@@ -67,7 +67,7 @@ describe('ExpressionBuilder', () => {
       const builder = new ExpressionBuilder()
       builder.notLike('email', '%test%')
       const { sql, params } = builder.build()
-      expect(sql).toBe('email NOT LIKE $1')
+      expect(sql).toBe('"email" NOT LIKE $1')
       expect(params).toEqual(['%test%'])
     })
 
@@ -75,7 +75,7 @@ describe('ExpressionBuilder', () => {
       const builder = new ExpressionBuilder()
       builder.ilike('name', '%john%')
       const { sql, params } = builder.build()
-      expect(sql).toBe('name ILIKE $1')
+      expect(sql).toBe('"name" ILIKE $1')
       expect(params).toEqual(['%john%'])
     })
 
@@ -83,7 +83,7 @@ describe('ExpressionBuilder', () => {
       const builder = new ExpressionBuilder()
       builder.notIlike('name', '%admin%')
       const { sql, params } = builder.build()
-      expect(sql).toBe('name NOT ILIKE $1')
+      expect(sql).toBe('"name" NOT ILIKE $1')
       expect(params).toEqual(['%admin%'])
     })
   })
@@ -93,7 +93,7 @@ describe('ExpressionBuilder', () => {
       const builder = new ExpressionBuilder()
       builder.isNull('deletedAt')
       const { sql, params } = builder.build()
-      expect(sql).toBe('deletedAt IS NULL')
+      expect(sql).toBe('"deletedat" IS NULL')
       expect(params).toEqual([])
     })
 
@@ -101,7 +101,7 @@ describe('ExpressionBuilder', () => {
       const builder = new ExpressionBuilder()
       builder.isNotNull('email')
       const { sql, params } = builder.build()
-      expect(sql).toBe('email IS NOT NULL')
+      expect(sql).toBe('"email" IS NOT NULL')
       expect(params).toEqual([])
     })
   })
@@ -111,7 +111,7 @@ describe('ExpressionBuilder', () => {
       const builder = new ExpressionBuilder()
       builder.in('status', ['active', 'pending'])
       const { sql, params } = builder.build()
-      expect(sql).toBe('status IN ($1, $2)')
+      expect(sql).toBe('"status" IN ($1, $2)')
       expect(params).toEqual(['active', 'pending'])
     })
 
@@ -119,7 +119,7 @@ describe('ExpressionBuilder', () => {
       const builder = new ExpressionBuilder()
       builder.notIn('id', [1, 2, 3])
       const { sql, params } = builder.build()
-      expect(sql).toBe('id NOT IN ($1, $2, $3)')
+      expect(sql).toBe('"id" NOT IN ($1, $2, $3)')
       expect(params).toEqual([1, 2, 3])
     })
 
@@ -127,7 +127,7 @@ describe('ExpressionBuilder', () => {
       const builder = new ExpressionBuilder()
       builder.in('id', [])
       const { sql, params } = builder.build()
-      expect(sql).toBe('id IN ()')
+      expect(sql).toBe('"id" IN ()')
       expect(params).toEqual([])
     })
   })
@@ -137,7 +137,7 @@ describe('ExpressionBuilder', () => {
       const builder = new ExpressionBuilder()
       builder.between('age', 18, 65)
       const { sql, params } = builder.build()
-      expect(sql).toBe('age BETWEEN $1 AND $2')
+      expect(sql).toBe('"age" BETWEEN $1 AND $2')
       expect(params).toEqual([18, 65])
     })
 
@@ -145,7 +145,7 @@ describe('ExpressionBuilder', () => {
       const builder = new ExpressionBuilder()
       builder.notBetween('price', 100, 500)
       const { sql, params } = builder.build()
-      expect(sql).toBe('price NOT BETWEEN $1 AND $2')
+      expect(sql).toBe('"price" NOT BETWEEN $1 AND $2')
       expect(params).toEqual([100, 500])
     })
   })
@@ -155,7 +155,7 @@ describe('ExpressionBuilder', () => {
       const builder = new ExpressionBuilder()
       builder.eq('a', 1).and().eq('b', 2)
       const { sql, params } = builder.build()
-      expect(sql).toBe('a = $1 AND b = $2')
+      expect(sql).toBe('"a" = $1 AND "b" = $2')
       expect(params).toEqual([1, 2])
     })
 
@@ -163,7 +163,7 @@ describe('ExpressionBuilder', () => {
       const builder = new ExpressionBuilder()
       builder.eq('status', 'active').or().eq('status', 'pending')
       const { sql, params } = builder.build()
-      expect(sql).toBe('status = $1 OR status = $2')
+      expect(sql).toBe('"status" = $1 OR "status" = $2')
       expect(params).toEqual(['active', 'pending'])
     })
 
@@ -171,7 +171,7 @@ describe('ExpressionBuilder', () => {
       const builder = new ExpressionBuilder()
       builder.eq('deleted', false).not().eq('archived', true)
       const { sql, params } = builder.build()
-      expect(sql).toBe('deleted = $1 NOT archived = $2')
+      expect(sql).toBe('"deleted" = $1 NOT "archived" = $2')
       expect(params).toEqual([false, true])
     })
 
@@ -184,7 +184,7 @@ describe('ExpressionBuilder', () => {
         .or()
         .eq('c', 3)
       const { sql, params } = builder.build()
-      expect(sql).toBe('a = $1 AND b = $2 OR c = $3')
+      expect(sql).toBe('"a" = $1 AND "b" = $2 OR "c" = $3')
       expect(params).toEqual([1, 2, 3])
     })
   })
@@ -196,7 +196,7 @@ describe('ExpressionBuilder', () => {
         g.eq('b', 2).or().eq('c', 3)
       })
       const { sql, params } = builder.build()
-      expect(sql).toBe('a = $1 AND (b = $2 OR c = $3)')
+      expect(sql).toBe('"a" = $1 AND ("b" = $2 OR "c" = $3)')
       expect(params).toEqual([1, 2, 3])
     })
 
@@ -208,7 +208,7 @@ describe('ExpressionBuilder', () => {
         })
       })
       const { sql, params } = builder.build()
-      expect(sql).toBe('a = $1 AND (b = $2 AND (c = $3 OR d = $4))')
+      expect(sql).toBe('"a" = $1 AND ("b" = $2 AND ("c" = $3 OR "d" = $4))')
       expect(params).toEqual([1, 2, 3, 4])
     })
   })
@@ -245,7 +245,7 @@ describe('ExpressionBuilder', () => {
       const builder = new ExpressionBuilder((i) => `?${i}`)
       builder.eq('name', 'John')
       const { sql, params } = builder.build()
-      expect(sql).toBe('name = ?1')
+      expect(sql).toBe('"name" = ?1')
       expect(params).toEqual(['John'])
     })
 
@@ -253,7 +253,7 @@ describe('ExpressionBuilder', () => {
       const builder = new ExpressionBuilder(() => '?')
       builder.eq('name', 'John')
       const { sql, params } = builder.build()
-      expect(sql).toBe('name = ?')
+      expect(sql).toBe('"name" = ?')
       expect(params).toEqual(['John'])
     })
   })
@@ -270,7 +270,7 @@ describe('ExpressionBuilder', () => {
         { column: 'b', operator: '=', value: 2, connector: 'AND' },
       ])
       const { sql, params } = builder.build()
-      expect(sql).toBe('a = $1 AND b = $2')
+      expect(sql).toBe('"a" = $1 AND "b" = $2')
       expect(params).toEqual([1, 2])
     })
   })
@@ -293,7 +293,7 @@ describe('ExpressionBuilder', () => {
 
       const { sql, params } = builder.build()
       expect(sql).toBe(
-        'status = $1 AND age > $2 AND (name LIKE $3 OR name LIKE $4) AND role IN ($5, $6) AND score BETWEEN $7 AND $8'
+        '"status" = $1 AND "age" > $2 AND ("name" LIKE $3 OR "name" LIKE $4) AND "role" IN ($5, $6) AND "score" BETWEEN $7 AND $8'
       )
       expect(params).toEqual(['active', 18, '%John%', '%Jane%', 'admin', 'user', 80, 100])
     })

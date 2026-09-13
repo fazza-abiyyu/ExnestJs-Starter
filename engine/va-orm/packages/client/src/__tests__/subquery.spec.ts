@@ -19,7 +19,7 @@ describe('SubqueryBuilder', () => {
       const builder = new QueryBuilder(driver, 'users')
       builder.where((eb) => eb.eq('status', 'active'))
       const { sql, params } = subquery.fromQueryBuilder(builder)
-      expect(sql).toBe('SELECT * FROM users WHERE status = $1')
+      expect(sql).toBe('SELECT * FROM "users" WHERE "status" = $1')
       expect(params).toEqual(['active'])
     })
   })
@@ -36,7 +36,7 @@ describe('SubqueryBuilder', () => {
     it('should build IN subquery', () => {
       const sub = subquery.fromRaw('SELECT id FROM users WHERE status = $1', ['active'])
       const condition = subquery.inSubquery('user_id', sub)
-      expect(condition).toBe('user_id IN (SELECT id FROM users WHERE status = $1)')
+      expect(condition).toBe('"user_id" IN (SELECT id FROM users WHERE status = $1)')
     })
   })
 
@@ -44,7 +44,7 @@ describe('SubqueryBuilder', () => {
     it('should build NOT IN subquery', () => {
       const sub = subquery.fromRaw('SELECT id FROM deleted_users', [])
       const condition = subquery.notInSubquery('user_id', sub)
-      expect(condition).toBe('user_id NOT IN (SELECT id FROM deleted_users)')
+      expect(condition).toBe('"user_id" NOT IN (SELECT id FROM deleted_users)')
     })
   })
 
@@ -68,7 +68,7 @@ describe('SubqueryBuilder', () => {
     it('should wrap subquery as table', () => {
       const sub = subquery.fromRaw('SELECT * FROM users WHERE status = $1', ['active'])
       const { sql, params } = subquery.asTable(sub, 'active_users')
-      expect(sql).toBe('(SELECT * FROM users WHERE status = $1) AS active_users')
+      expect(sql).toBe('(SELECT * FROM users WHERE status = $1) AS "active_users"')
       expect(params).toEqual(['active'])
     })
   })
@@ -77,7 +77,7 @@ describe('SubqueryBuilder', () => {
     it('should wrap subquery as column', () => {
       const sub = subquery.fromRaw('SELECT COUNT(*) FROM posts WHERE userId = users.id', [])
       const result = subquery.asColumn(sub, 'post_count')
-      expect(result).toBe('(SELECT COUNT(*) FROM posts WHERE userId = users.id) AS post_count')
+      expect(result).toBe('(SELECT COUNT(*) FROM posts WHERE userId = users.id) AS "post_count"')
     })
   })
 
@@ -99,25 +99,25 @@ describe('SubqueryBuilder', () => {
     it('should build sum subquery', () => {
       const sub = subquery.fromRaw('SELECT amount FROM transactions WHERE userId = $1', [1])
       const result = subquery.sumSubquery('amount', sub)
-      expect(result).toBe('(SELECT SUM(amount) FROM (SELECT amount FROM transactions WHERE userId = $1) AS _subquery)')
+      expect(result).toBe('(SELECT SUM("amount") FROM (SELECT amount FROM transactions WHERE userId = $1) AS _subquery)')
     })
 
     it('should build avg subquery', () => {
       const sub = subquery.fromRaw('SELECT score FROM scores WHERE userId = $1', [1])
       const result = subquery.avgSubquery('score', sub)
-      expect(result).toBe('(SELECT AVG(score) FROM (SELECT score FROM scores WHERE userId = $1) AS _subquery)')
+      expect(result).toBe('(SELECT AVG("score") FROM (SELECT score FROM scores WHERE userId = $1) AS _subquery)')
     })
 
     it('should build min subquery', () => {
       const sub = subquery.fromRaw('SELECT price FROM products WHERE categoryId = $1', [1])
       const result = subquery.minSubquery('price', sub)
-      expect(result).toBe('(SELECT MIN(price) FROM (SELECT price FROM products WHERE categoryId = $1) AS _subquery)')
+      expect(result).toBe('(SELECT MIN("price") FROM (SELECT price FROM products WHERE categoryId = $1) AS _subquery)')
     })
 
     it('should build max subquery', () => {
       const sub = subquery.fromRaw('SELECT price FROM products WHERE categoryId = $1', [1])
       const result = subquery.maxSubquery('price', sub)
-      expect(result).toBe('(SELECT MAX(price) FROM (SELECT price FROM products WHERE categoryId = $1) AS _subquery)')
+      expect(result).toBe('(SELECT MAX("price") FROM (SELECT price FROM products WHERE categoryId = $1) AS _subquery)')
     })
   })
 

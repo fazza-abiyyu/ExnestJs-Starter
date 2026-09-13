@@ -50,6 +50,7 @@ export class SqliteDriver implements DatabaseDriver {
       transaction: <R>(nested: (driver: DatabaseDriver) => Promise<R>) => nested(txDriver),
       close: async () => {},
       getPlaceholder: (_index: number) => '?',
+      getDialect: () => 'sqlite' as const,
     }
     this.db.exec('BEGIN')
     try {
@@ -64,6 +65,10 @@ export class SqliteDriver implements DatabaseDriver {
 
   async close(): Promise<void> {
     this.db.close()
+  }
+
+  getDialect(): 'sqlite' {
+    return 'sqlite'
   }
 
   getPlaceholder(_index: number): string {

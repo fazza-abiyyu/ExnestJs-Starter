@@ -84,6 +84,7 @@ export class PostgresDriver implements DatabaseDriver {
       transaction: <R>(nested: (driver: DatabaseDriver) => Promise<R>) => nested(txDriver),
       close: async () => {},
       getPlaceholder: (index: number) => this.getPlaceholder(index),
+      getDialect: () => 'postgres' as const,
     }
     try {
       await client.query('BEGIN')
@@ -100,6 +101,10 @@ export class PostgresDriver implements DatabaseDriver {
 
   async close(): Promise<void> {
     await this.pool.end()
+  }
+
+  getDialect(): 'postgres' {
+    return 'postgres'
   }
 
   getPlaceholder(index: number): string {

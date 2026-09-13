@@ -21,7 +21,7 @@ describe('Repository', () => {
         email: 'john@example.com',
       })
       expect(result).toEqual(testUser)
-      expect(driver.getQueries()[0].sql).toContain('INSERT INTO users')
+      expect(driver.getQueries()[0].sql).toContain('INSERT INTO "users"')
     })
 
     it('should create multiple records', async () => {
@@ -140,7 +140,7 @@ describe('Repository', () => {
       driver.setResult({ rows: [testUser], rowCount: 1 })
       const result = await softDeleteRepo.delete({ id: 1 })
       expect(result).toEqual(testUser)
-      expect(driver.getQueries()[0].sql).toContain('SET deletedAt')
+      expect(driver.getQueries()[0].sql).toContain('SET "deletedat"')
     })
   })
 

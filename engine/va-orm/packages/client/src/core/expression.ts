@@ -1,15 +1,55 @@
 // VA-ORM Expression Builder
 
 import type { WhereClause, FilterOperator } from './types.js'
+import { ansiQuote } from '../relation/quote.js'
+
+/** Operators the builder accepts. Anything else (e.g. from a hand-built
+ *  WhereClause) is rejected — operators must never carry user input. */
+const VALID_OPERATORS: ReadonlySet<string> = new Set([
+  '=', '!=', '>', '<', '>=', '<=',
+  'LIKE', 'NOT LIKE', 'ILIKE', 'NOT ILIKE',
+  'IN', 'NOT IN',
+  'IS NULL', 'IS NOT NULL',
+  'BETWEEN', 'NOT BETWEEN',
+  '@>', '&&',
+])
+
+export function assertSafeOperator(operator: string): void {
+  if (!VALID_OPERATORS.has(operator)) {
+    throw new Error(`Unsafe SQL operator rejected: ${JSON.stringify(operator)}`)
+  }
+}
+
+/** ORDER BY direction allowlist — never interpolate raw direction strings. */
+export function assertSafeDirection(direction: string): 'ASC' | 'DESC' {
+  const upper = String(direction).toUpperCase()
+  if (upper !== 'ASC' && upper !== 'DESC') {
+    throw new Error(`Unsafe ORDER BY direction rejected: ${JSON.stringify(direction)}`)
+  }
+  return upper
+}
+
+/** LIMIT/OFFSET must be non-negative integers — never interpolate raw values. */
+export function assertSafeInteger(value: number | undefined, clause: string): void {
+  if (value === undefined) return
+  if (!Number.isInteger(value) || value < 0) {
+    throw new Error(`Unsafe ${clause} rejected: ${JSON.stringify(value)}`)
+  }
+}
 
 export class ExpressionBuilder {
   private clauses: WhereClause[] = []
   private params: any[] = []
   private placeholderFn: (index: number) => string
+  private quote: (name: string) => string
   private pendingConnector?: 'AND' | 'OR' | 'NOT'
 
-  constructor(placeholderFn: (index: number) => string = (i) => `$${i}`) {
+  constructor(
+    placeholderFn: (index: number) => string = (i) => `$${i}`,
+    quote: (name: string) => string = (n) => ansiQuote(n.toLowerCase()),
+  ) {
     this.placeholderFn = placeholderFn
+    this.quote = quote
   }
 
   private addClause(clause: WhereClause): this {
@@ -117,7 +157,7 @@ export class ExpressionBuilder {
   // ============ NESTED ============
 
   group(fn: (builder: ExpressionBuilder) => void): this {
-    const nested = new ExpressionBuilder(this.placeholderFn)
+    const nested = new ExpressionBuilder(this.placeholderFn, this.quote)
     fn(nested)
     this.addClause({
       column: '',
@@ -173,6 +213,7 @@ export class ExpressionBuilder {
     for (let i = 0; i < this.clauses.length; i++) {
       const clause = this.clauses[i]
       const prefix = i === 0 ? '' : `${clause.connector || 'AND'} `
+      assertSafeOperator(clause.operator)
 
       if (clause.nested) {
         const nested = this.buildNested(clause.nested, paramIndex)
@@ -183,21 +224,21 @@ export class ExpressionBuilder {
       }
 
       if (clause.operator === 'IS NULL' || clause.operator === 'IS NOT NULL') {
-        parts.push(`${prefix}${clause.column} ${clause.operator}`)
+        parts.push(`${prefix}${this.quote(clause.column)} ${clause.operator}`)
         continue
       }
 
       if (clause.operator === 'IN' || clause.operator === 'NOT IN') {
         const values = clause.value as any[]
         const placeholders = values.map(() => this.placeholderFn(paramIndex++))
-        parts.push(`${prefix}${clause.column} ${clause.operator} (${placeholders.join(', ')})`)
+        parts.push(`${prefix}${this.quote(clause.column)} ${clause.operator} (${placeholders.join(', ')})`)
         params.push(...values)
         continue
       }
 
       if (clause.operator === 'BETWEEN' || clause.operator === 'NOT BETWEEN') {
         const [min, max] = clause.value as [any, any]
-        parts.push(`${prefix}${clause.column} ${clause.operator} ${this.placeholderFn(paramIndex++)} AND ${this.placeholderFn(paramIndex++)}`)
+        parts.push(`${prefix}${this.quote(clause.column)} ${clause.operator} ${this.placeholderFn(paramIndex++)} AND ${this.placeholderFn(paramIndex++)}`)
         params.push(min, max)
         continue
       }
@@ -215,13 +256,13 @@ export class ExpressionBuilder {
         const values = clause.value as any[]
         if (Array.isArray(values)) {
           const placeholders = values.map(() => this.placeholderFn(paramIndex++))
-          parts.push(`${prefix}${clause.column} ${clause.operator} ARRAY[${placeholders.join(', ')}]::text[]`)
+          parts.push(`${prefix}${this.quote(clause.column)} ${clause.operator} ARRAY[${placeholders.join(', ')}]::text[]`)
           params.push(...values)
         }
         continue
       }
 
-      parts.push(`${prefix}${clause.column} ${clause.operator} ${this.placeholderFn(paramIndex++)}`)
+      parts.push(`${prefix}${this.quote(clause.column)} ${clause.operator} ${this.placeholderFn(paramIndex++)}`)
       params.push(clause.value)
     }
 
@@ -239,6 +280,7 @@ export class ExpressionBuilder {
     for (let i = 0; i < clauses.length; i++) {
       const clause = clauses[i]
       const prefix = i === 0 ? '' : `${clause.connector || 'AND'} `
+      assertSafeOperator(clause.operator)
 
       if (clause.nested) {
         const nested = this.buildNested(clause.nested, paramIndex)
@@ -249,14 +291,14 @@ export class ExpressionBuilder {
       }
 
       if (clause.operator === 'IS NULL' || clause.operator === 'IS NOT NULL') {
-        parts.push(`${prefix}${clause.column} ${clause.operator}`)
+        parts.push(`${prefix}${this.quote(clause.column)} ${clause.operator}`)
         continue
       }
 
       if (clause.operator === 'IN' || clause.operator === 'NOT IN') {
         const values = clause.value as any[]
         const placeholders = values.map(() => this.placeholderFn(paramIndex++))
-        parts.push(`${prefix}${clause.column} ${clause.operator} (${placeholders.join(', ')})`)
+        parts.push(`${prefix}${this.quote(clause.column)} ${clause.operator} (${placeholders.join(', ')})`)
         params.push(...values)
         continue
       }
@@ -270,7 +312,7 @@ export class ExpressionBuilder {
         continue
       }
 
-      parts.push(`${prefix}${clause.column} ${clause.operator} ${this.placeholderFn(paramIndex++)}`)
+      parts.push(`${prefix}${this.quote(clause.column)} ${clause.operator} ${this.placeholderFn(paramIndex++)}`)
       params.push(clause.value)
     }
 
@@ -282,12 +324,19 @@ export class ExpressionBuilder {
 
   // ============ STATIC ============
 
-  static create(placeholderFn?: (index: number) => string): ExpressionBuilder {
-    return new ExpressionBuilder(placeholderFn)
+  static create(
+    placeholderFn?: (index: number) => string,
+    quote?: (name: string) => string,
+  ): ExpressionBuilder {
+    return new ExpressionBuilder(placeholderFn, quote)
   }
 
-  static from(clauses: WhereClause[], placeholderFn?: (index: number) => string): ExpressionBuilder {
-    const builder = new ExpressionBuilder(placeholderFn)
+  static from(
+    clauses: WhereClause[],
+    placeholderFn?: (index: number) => string,
+    quote?: (name: string) => string,
+  ): ExpressionBuilder {
+    const builder = new ExpressionBuilder(placeholderFn, quote)
     builder.clauses = [...clauses]
     return builder
   }

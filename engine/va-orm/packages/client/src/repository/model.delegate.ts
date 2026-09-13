@@ -79,12 +79,12 @@ export class ModelDelegate<T extends Record<string, any> = Record<string, any>> 
   }
 
   async findMany(args: FindManyArgs = {}): Promise<(T & Record<string, any>)[]> {
-    const builder = new QueryBuilder<T>(this.driver, this.quote(this.meta.table))
+    const builder = new QueryBuilder<T>(this.driver, this.meta.table)
     const quote = this.quote
     const resolved = resolveSelect(this.meta, args.select, args.include)
 
     if (resolved.columns) {
-      builder.select(...resolved.columns.map((c) => quote(c)))
+      builder.select(...resolved.columns)
     }
 
     if (args.where) {
@@ -95,7 +95,7 @@ export class ModelDelegate<T extends Record<string, any> = Record<string, any>> 
 
     if (args.orderBy) {
       for (const [column, direction] of Object.entries(args.orderBy)) {
-        builder.orderBy(quote(column), direction)
+        builder.orderBy(column, direction)
       }
     }
 
@@ -112,7 +112,7 @@ export class ModelDelegate<T extends Record<string, any> = Record<string, any>> 
   }
 
   async count(where?: WhereInput): Promise<number> {
-    const builder = new QueryBuilder(this.driver, this.quote(this.meta.table))
+    const builder = new QueryBuilder(this.driver, this.meta.table)
     if (where) {
       const meta = this.meta
       const registry = this.registry

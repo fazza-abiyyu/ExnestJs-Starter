@@ -15,28 +15,28 @@ describe('QueryBuilder', () => {
     it('should build simple select all', () => {
       const builder = new QueryBuilder(driver, 'users')
       const { sql } = builder.build()
-      expect(sql).toBe('SELECT * FROM users')
+      expect(sql).toBe('SELECT * FROM "users"')
     })
 
     it('should build select with specific columns', () => {
       const builder = new QueryBuilder(driver, 'users')
       builder.select('id', 'name', 'email')
       const { sql } = builder.build()
-      expect(sql).toBe('SELECT id, name, email FROM users')
+      expect(sql).toBe('SELECT "id", "name", "email" FROM "users"')
     })
 
     it('should build select distinct', () => {
       const builder = new QueryBuilder(driver, 'users')
       builder.select('role').distinct()
       const { sql } = builder.build()
-      expect(sql).toBe('SELECT DISTINCT role FROM users')
+      expect(sql).toBe('SELECT DISTINCT "role" FROM "users"')
     })
 
     it('should build select with alias', () => {
       const builder = new QueryBuilder(driver, 'users', 'u')
       builder.select('u.id', 'u.name')
       const { sql } = builder.build()
-      expect(sql).toBe('SELECT u.id, u.name FROM users AS u')
+      expect(sql).toBe('SELECT "u"."id", "u"."name" FROM "users" AS "u"')
     })
   })
 
@@ -45,7 +45,7 @@ describe('QueryBuilder', () => {
       const builder = new QueryBuilder(driver, 'users')
       builder.where((eb) => eb.eq('status', 'active'))
       const { sql, params } = builder.build()
-      expect(sql).toBe('SELECT * FROM users WHERE status = $1')
+      expect(sql).toBe('SELECT * FROM "users" WHERE "status" = $1')
       expect(params).toEqual(['active'])
     })
 
@@ -55,7 +55,7 @@ describe('QueryBuilder', () => {
         eb.eq('status', 'active').and().gt('age', 18)
       })
       const { sql, params } = builder.build()
-      expect(sql).toBe('SELECT * FROM users WHERE status = $1 AND age > $2')
+      expect(sql).toBe('SELECT * FROM "users" WHERE "status" = $1 AND "age" > $2')
       expect(params).toEqual(['active', 18])
     })
 
@@ -65,7 +65,7 @@ describe('QueryBuilder', () => {
         eb.eq('role', 'admin').or().eq('role', 'superadmin')
       })
       const { sql, params } = builder.build()
-      expect(sql).toBe('SELECT * FROM users WHERE role = $1 OR role = $2')
+      expect(sql).toBe('SELECT * FROM "users" WHERE "role" = $1 OR "role" = $2')
       expect(params).toEqual(['admin', 'superadmin'])
     })
 
@@ -73,7 +73,7 @@ describe('QueryBuilder', () => {
       const builder = new QueryBuilder(driver, 'users')
       builder.where((eb) => eb.in('id', [1, 2, 3]))
       const { sql, params } = builder.build()
-      expect(sql).toBe('SELECT * FROM users WHERE id IN ($1, $2, $3)')
+      expect(sql).toBe('SELECT * FROM "users" WHERE "id" IN ($1, $2, $3)')
       expect(params).toEqual([1, 2, 3])
     })
 
@@ -81,14 +81,14 @@ describe('QueryBuilder', () => {
       const builder = new QueryBuilder(driver, 'users')
       builder.where((eb) => eb.isNull('deletedAt'))
       const { sql } = builder.build()
-      expect(sql).toBe('SELECT * FROM users WHERE deletedAt IS NULL')
+      expect(sql).toBe('SELECT * FROM "users" WHERE "deletedat" IS NULL')
     })
 
     it('should build where with BETWEEN', () => {
       const builder = new QueryBuilder(driver, 'users')
       builder.where((eb) => eb.between('age', 18, 65))
       const { sql, params } = builder.build()
-      expect(sql).toBe('SELECT * FROM users WHERE age BETWEEN $1 AND $2')
+      expect(sql).toBe('SELECT * FROM "users" WHERE "age" BETWEEN $1 AND $2')
       expect(params).toEqual([18, 65])
     })
   })
@@ -98,35 +98,35 @@ describe('QueryBuilder', () => {
       const builder = new QueryBuilder(driver, 'users')
       builder.join('posts', 'users.id = posts.userId')
       const { sql } = builder.build()
-      expect(sql).toBe('SELECT * FROM users INNER JOIN posts ON users.id = posts.userId')
+      expect(sql).toBe('SELECT * FROM "users" INNER JOIN "posts" ON users.id = posts.userId')
     })
 
     it('should build left join', () => {
       const builder = new QueryBuilder(driver, 'users')
       builder.leftJoin('posts', 'users.id = posts.userId')
       const { sql } = builder.build()
-      expect(sql).toBe('SELECT * FROM users LEFT JOIN posts ON users.id = posts.userId')
+      expect(sql).toBe('SELECT * FROM "users" LEFT JOIN "posts" ON users.id = posts.userId')
     })
 
     it('should build right join', () => {
       const builder = new QueryBuilder(driver, 'users')
       builder.rightJoin('posts', 'users.id = posts.userId')
       const { sql } = builder.build()
-      expect(sql).toBe('SELECT * FROM users RIGHT JOIN posts ON users.id = posts.userId')
+      expect(sql).toBe('SELECT * FROM "users" RIGHT JOIN "posts" ON users.id = posts.userId')
     })
 
     it('should build cross join', () => {
       const builder = new QueryBuilder(driver, 'users')
       builder.crossJoin('roles')
       const { sql } = builder.build()
-      expect(sql).toBe('SELECT * FROM users CROSS JOIN roles')
+      expect(sql).toBe('SELECT * FROM "users" CROSS JOIN "roles"')
     })
 
     it('should build join with alias', () => {
       const builder = new QueryBuilder(driver, 'users')
       builder.join('posts', 'users.id = posts.userId', 'p')
       const { sql } = builder.build()
-      expect(sql).toBe('SELECT * FROM users INNER JOIN posts AS p ON users.id = posts.userId')
+      expect(sql).toBe('SELECT * FROM "users" INNER JOIN "posts" AS "p" ON users.id = posts.userId')
     })
 
     it('should build multiple joins', () => {
@@ -136,7 +136,7 @@ describe('QueryBuilder', () => {
         .leftJoin('comments', 'posts.id = comments.postId')
       const { sql } = builder.build()
       expect(sql).toBe(
-        'SELECT * FROM users LEFT JOIN posts ON users.id = posts.userId LEFT JOIN comments ON posts.id = comments.postId'
+        'SELECT * FROM "users" LEFT JOIN "posts" ON users.id = posts.userId LEFT JOIN "comments" ON posts.id = comments.postId'
       )
     })
   })
@@ -146,28 +146,28 @@ describe('QueryBuilder', () => {
       const builder = new QueryBuilder(driver, 'users')
       builder.orderBy('name')
       const { sql } = builder.build()
-      expect(sql).toBe('SELECT * FROM users ORDER BY name ASC')
+      expect(sql).toBe('SELECT * FROM "users" ORDER BY "name" ASC')
     })
 
     it('should build order by descending', () => {
       const builder = new QueryBuilder(driver, 'users')
       builder.orderBy('createdAt', 'desc')
       const { sql } = builder.build()
-      expect(sql).toBe('SELECT * FROM users ORDER BY createdAt DESC')
+      expect(sql).toBe('SELECT * FROM "users" ORDER BY "createdat" DESC')
     })
 
     it('should build multiple order by', () => {
       const builder = new QueryBuilder(driver, 'users')
       builder.orderBy('lastName', 'asc').orderBy('firstName', 'asc')
       const { sql } = builder.build()
-      expect(sql).toBe('SELECT * FROM users ORDER BY lastName ASC, firstName ASC')
+      expect(sql).toBe('SELECT * FROM "users" ORDER BY "lastname" ASC, "firstname" ASC')
     })
 
     it('should build order by with table prefix', () => {
       const builder = new QueryBuilder(driver, 'users', 'u')
       builder.orderBy('name', 'asc', 'u')
       const { sql } = builder.build()
-      expect(sql).toBe('SELECT * FROM users AS u ORDER BY u.name ASC')
+      expect(sql).toBe('SELECT * FROM "users" AS "u" ORDER BY "u"."name" ASC')
     })
   })
 
@@ -176,14 +176,14 @@ describe('QueryBuilder', () => {
       const builder = new QueryBuilder(driver, 'users')
       builder.select('role').groupBy('role')
       const { sql } = builder.build()
-      expect(sql).toBe('SELECT role FROM users GROUP BY role')
+      expect(sql).toBe('SELECT "role" FROM "users" GROUP BY "role"')
     })
 
     it('should build multiple group by', () => {
       const builder = new QueryBuilder(driver, 'users')
       builder.select('role', 'status').groupBy('role', 'status')
       const { sql } = builder.build()
-      expect(sql).toBe('SELECT role, status FROM users GROUP BY role, status')
+      expect(sql).toBe('SELECT "role", "status" FROM "users" GROUP BY "role", "status"')
     })
 
     it('should build group by with having', () => {
@@ -193,7 +193,7 @@ describe('QueryBuilder', () => {
         .groupBy('role')
         .having((eb) => eb.raw('COUNT(*) > ?', 5))
       const { sql, params } = builder.build()
-      expect(sql).toBe('SELECT role FROM users GROUP BY role HAVING COUNT(*) > $1')
+      expect(sql).toBe('SELECT "role" FROM "users" GROUP BY "role" HAVING COUNT(*) > $1')
       expect(params).toEqual([5])
     })
   })
@@ -203,28 +203,28 @@ describe('QueryBuilder', () => {
       const builder = new QueryBuilder(driver, 'users')
       builder.limit(10)
       const { sql } = builder.build()
-      expect(sql).toBe('SELECT * FROM users LIMIT 10')
+      expect(sql).toBe('SELECT * FROM "users" LIMIT 10')
     })
 
     it('should build offset', () => {
       const builder = new QueryBuilder(driver, 'users')
       builder.offset(20)
       const { sql } = builder.build()
-      expect(sql).toBe('SELECT * FROM users OFFSET 20')
+      expect(sql).toBe('SELECT * FROM "users" OFFSET 20')
     })
 
     it('should build limit and offset', () => {
       const builder = new QueryBuilder(driver, 'users')
       builder.limit(10).offset(20)
       const { sql } = builder.build()
-      expect(sql).toBe('SELECT * FROM users LIMIT 10 OFFSET 20')
+      expect(sql).toBe('SELECT * FROM "users" LIMIT 10 OFFSET 20')
     })
 
     it('should build take and skip', () => {
       const builder = new QueryBuilder(driver, 'users')
       builder.take(10).skip(20)
       const { sql } = builder.build()
-      expect(sql).toBe('SELECT * FROM users LIMIT 10 OFFSET 20')
+      expect(sql).toBe('SELECT * FROM "users" LIMIT 10 OFFSET 20')
     })
   })
 
@@ -233,7 +233,7 @@ describe('QueryBuilder', () => {
       const builder = new QueryBuilder(driver, 'users')
       builder.where((eb) => eb.eq('id', 1)).forUpdate()
       const { sql, params } = builder.build()
-      expect(sql).toBe('SELECT * FROM users WHERE id = $1 FOR UPDATE')
+      expect(sql).toBe('SELECT * FROM "users" WHERE "id" = $1 FOR UPDATE')
       expect(params).toEqual([1])
     })
   })
@@ -301,7 +301,7 @@ describe('QueryBuilder', () => {
 
       const { sql, params } = builder.build()
       expect(sql).toBe(
-        'SELECT u.id, u.name, COUNT(p.id) as postCount FROM users AS u LEFT JOIN posts AS p ON u.id = p.userId WHERE u.status = $1 AND u.age > $2 GROUP BY u.id, u.name HAVING COUNT(p.id) > $3 ORDER BY postCount DESC LIMIT 10 OFFSET 0'
+        'SELECT "u"."id", "u"."name", COUNT(p.id) as postCount FROM "users" AS "u" LEFT JOIN "posts" AS "p" ON u.id = p.userId WHERE "u"."status" = $1 AND "u"."age" > $2 GROUP BY "u"."id", "u"."name" HAVING COUNT(p.id) > $3 ORDER BY "postcount" DESC LIMIT 10 OFFSET 0'
       )
       expect(params).toEqual(['active', 18, 5])
     })

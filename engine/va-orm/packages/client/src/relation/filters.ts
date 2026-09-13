@@ -60,7 +60,9 @@ export function applyWhere(
     if (meta && isRelationFilterObject(condition)) {
       applyRelationFilter(eb, meta, condition as Record<string, WhereInput>, model, registry, quote, alias, depth)
     } else {
-      applyScalarFilter(eb, quote(field), condition)
+      // Raw field name — quoting happens exactly once at SQL-build time
+      // inside ExpressionBuilder. Pre-quoting here would double-quote.
+      applyScalarFilter(eb, field, condition)
     }
   }
 }

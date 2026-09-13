@@ -9,8 +9,9 @@ import type {
   WhereInput,
 } from '../core/types.js'
 import { buildWhere } from '../relation/filters.js'
-import { ansiQuote } from '../relation/quote.js'
+import { quoteColumn, quoteTable } from '../relation/quote.js'
 import type { QuoteFn } from '../relation/quote.js'
+import { assertSafeDirection, assertSafeInteger } from '../core/expression.js'
 
 export interface AggregateArgs {
   where?: WhereInput
@@ -60,6 +61,13 @@ function aggregateExpression(fn: string, target: string, quote: QuoteFn): string
   return `${fn}(${quote(target)})`
 }
 
+function assertAggregateFn(fn: string): string {
+  if (!(fn in AGGREGATE_FNS)) {
+    throw new Error(`Unsafe aggregate function rejected: ${JSON.stringify(fn)}`)
+  }
+  return AGGREGATE_FNS[fn]
+}
+
 function applyScalarCondition(parts: string[], params: any[], column: string, cond: ScalarCondition, ph: () => string): void {
   if (cond.equals !== undefined) {
     parts.push(`${column} = ${ph()}`)
@@ -101,9 +109,19 @@ export class AggregationRepository<T extends Record<string, any>> {
   constructor(
     private driver: DatabaseDriver,
     private tableName: string,
-    quote: QuoteFn = ansiQuote
+    quote?: QuoteFn
   ) {
-    this.quote = quote
+    // Driver-derived quoting (lowercase-folded columns) unless the caller
+    // passes an explicit quoter (e.g. ModelDelegate with its own).
+    this.quote = quote ?? ((name: string) => quoteColumn(this.driver, name))
+  }
+
+  private qc(name: string): string {
+    return quoteColumn(this.driver, name)
+  }
+
+  private qt(name: string): string {
+    return quoteTable(this.driver, name)
   }
 
   private meta(): ModelMeta {
@@ -117,21 +135,21 @@ export class AggregationRepository<T extends Record<string, any>> {
       selectParts.push('COUNT(*) as _count')
     } else if (Array.isArray(args._count)) {
       for (const field of args._count) {
-        selectParts.push(`COUNT(${this.quote(field)}) as _count_${field}`)
+        selectParts.push(`COUNT(${this.qc(field)}) as _count_${field}`)
       }
     }
 
     for (const field of args._sum ?? []) {
-      selectParts.push(`SUM(${this.quote(field)}) as _sum_${field}`)
+      selectParts.push(`SUM(${this.qc(field)}) as _sum_${field}`)
     }
     for (const field of args._avg ?? []) {
-      selectParts.push(`AVG(${this.quote(field)}) as _avg_${field}`)
+      selectParts.push(`AVG(${this.qc(field)}) as _avg_${field}`)
     }
     for (const field of args._min ?? []) {
-      selectParts.push(`MIN(${this.quote(field)}) as _min_${field}`)
+      selectParts.push(`MIN(${this.qc(field)}) as _min_${field}`)
     }
     for (const field of args._max ?? []) {
-      selectParts.push(`MAX(${this.quote(field)}) as _max_${field}`)
+      selectParts.push(`MAX(${this.qc(field)}) as _max_${field}`)
     }
 
     if (selectParts.length === 0) {
@@ -146,7 +164,7 @@ export class AggregationRepository<T extends Record<string, any>> {
     let paramIndex = 1
     const ph = () => this.driver.getPlaceholder(paramIndex++)
 
-    let sql = `SELECT ${this.selectAggregates(args).join(', ')} FROM ${this.quote(this.tableName)}`
+    let sql = `SELECT ${this.selectAggregates(args).join(', ')} FROM ${this.qt(this.tableName)}`
 
     if (args.where) {
       const { sql: whereSql, params: whereParams } = buildWhere(
@@ -176,8 +194,8 @@ export class AggregationRepository<T extends Record<string, any>> {
     let paramIndex = 1
     const ph = () => this.driver.getPlaceholder(paramIndex++)
 
-    const selectParts = [...args.by.map((f) => this.quote(f)), ...this.selectAggregates(args)]
-    let sql = `SELECT ${selectParts.join(', ')} FROM ${this.quote(this.tableName)}`
+    const selectParts = [...args.by.map((f) => this.qc(f)), ...this.selectAggregates(args)]
+    let sql = `SELECT ${selectParts.join(', ')} FROM ${this.qt(this.tableName)}`
 
     if (args.where) {
       const { sql: whereSql, params: whereParams } = buildWhere(
@@ -189,13 +207,13 @@ export class AggregationRepository<T extends Record<string, any>> {
       }
     }
 
-    sql += ` GROUP BY ${args.by.map((f) => this.quote(f)).join(', ')}`
+    sql += ` GROUP BY ${args.by.map((f) => this.qc(f)).join(', ')}`
 
     if (args.having) {
       const havingParts: string[] = []
       for (const [fn, targets] of Object.entries(args.having)) {
         if (!targets) continue
-        const sqlFn = AGGREGATE_FNS[fn] ?? fn.toUpperCase()
+        const sqlFn = assertAggregateFn(fn)
         for (const [target, cond] of Object.entries(targets as Record<string, ScalarCondition>)) {
           if (!cond) continue
           const column = aggregateExpression(sqlFn, target, this.quote)
@@ -209,11 +227,13 @@ export class AggregationRepository<T extends Record<string, any>> {
 
     if (args.orderBy) {
       const orderParts = Object.entries(args.orderBy).map(
-        ([key, dir]) => `${this.quote(key)} ${dir.toUpperCase()}`
+        ([key, dir]) => `${this.qc(key)} ${assertSafeDirection(dir)}`
       )
       if (orderParts.length > 0) sql += ` ORDER BY ${orderParts.join(', ')}`
     }
 
+    assertSafeInteger(args.take, 'LIMIT')
+    assertSafeInteger(args.skip, 'OFFSET')
     if (args.take !== undefined) sql += ` LIMIT ${args.take}`
     if (args.skip !== undefined) sql += ` OFFSET ${args.skip}`
 

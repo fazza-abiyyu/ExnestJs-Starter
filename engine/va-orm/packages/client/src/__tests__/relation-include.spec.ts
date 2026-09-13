@@ -130,7 +130,7 @@ describe('ModelDelegate include', () => {
     const queries = driver.getQueries()
     expect(queries[0].sql).toBe('SELECT * FROM "users"')
     expect(queries[1].sql).toContain('FROM "posts"')
-    expect(queries[1].sql).toContain('"userId" IN')
+    expect(queries[1].sql).toContain('"userid" IN')
     expect(queries[1].params).toEqual([1, 2])
   })
 
@@ -215,7 +215,7 @@ describe('buildWhere relation filters', () => {
     expect(sql).toContain('"age" >= $3')
     expect(sql).toContain('"name" LIKE $4')
     expect(sql).toContain('"role" IN ($5, $6)')
-    expect(sql).toContain('"deletedAt" IS NULL')
+    expect(sql).toContain('"deletedat" IS NULL')
     expect(params).toEqual(['active', 65, 18, '%Jo%', 'admin', 'mod'])
   })
 

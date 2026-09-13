@@ -104,12 +104,14 @@ export class VaClient {
 
   private createDriverProxy(): DatabaseDriver {
     const pool = this.pool!
+    const dialect = this.options.driver
     return {
       query: (sql, params) => pool.query(sql, params),
       execute: (sql, params) => pool.execute(sql, params),
       transaction: (fn) => pool.transaction(fn),
       close: () => pool.close(),
       getPlaceholder: (index) => pool['connections'][0]?.driver.getPlaceholder(index) ?? `$${index}`,
+      getDialect: () => dialect,
     }
   }
 

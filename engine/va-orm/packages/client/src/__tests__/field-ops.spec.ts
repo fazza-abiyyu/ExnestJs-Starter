@@ -71,7 +71,7 @@ describe('Repository field operations', () => {
     await repo.update({ id: 1 }, { age: { increment: 1 } } as any)
 
     const query = driver.getQueries()[0]
-    expect(query.sql).toBe('UPDATE users SET "age" = "age" + $1 WHERE id = $2 RETURNING *')
+    expect(query.sql).toBe('UPDATE "users" SET "age" = "age" + $1 WHERE "id" = $2 RETURNING *')
     expect(query.params).toEqual([1, 1])
   })
 
@@ -84,7 +84,7 @@ describe('Repository field operations', () => {
 
     const query = driver.getQueries()[0]
     expect(query.sql).toBe(
-      'UPDATE users SET "balance" = "balance" - $1, "name" = $2 WHERE status = $3'
+      'UPDATE "users" SET "balance" = "balance" - $1, "name" = $2 WHERE "status" = $3'
     )
     expect(query.params).toEqual([50, 'X', 'active'])
   })

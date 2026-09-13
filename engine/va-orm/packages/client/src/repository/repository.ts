@@ -4,6 +4,7 @@ import type { DatabaseDriver, WhereClause, OrderClause, SortDirection, Repositor
 import { QueryBuilder } from '../core/query-builder.js'
 import { ExpressionBuilder } from '../core/expression.js'
 import { buildSetClause } from './field.ops.js'
+import { quoteColumn, quoteTable } from '../relation/quote.js'
 
 export class Repository<T extends Record<string, any>> {
   private options: Required<Omit<RepositoryOptions, 'updatedAtField'>>
@@ -40,7 +41,7 @@ export class Repository<T extends Record<string, any>> {
     const values = Object.values(touched)
     const placeholders = values.map((_, i) => this.driver.getPlaceholder(i + 1))
 
-    const sql = `INSERT INTO ${this.tableName} (${columns.join(', ')}) VALUES (${placeholders.join(', ')}) RETURNING *`
+    const sql = `INSERT INTO ${quoteTable(this.driver, this.tableName)} (${columns.map((c) => quoteColumn(this.driver, c)).join(', ')}) VALUES (${placeholders.join(', ')}) RETURNING *`
     const result = await this.driver.query<T>(sql, values)
     return result.rows[0]
   }
@@ -55,7 +56,7 @@ export class Repository<T extends Record<string, any>> {
     for (const item of touched) {
       const values = Object.values(item)
       const placeholders = values.map((_, i) => this.driver.getPlaceholder(i + 1))
-      const sql = `INSERT INTO ${this.tableName} (${columns.join(', ')}) VALUES (${placeholders.join(', ')}) RETURNING *`
+      const sql = `INSERT INTO ${quoteTable(this.driver, this.tableName)} (${columns.map((c) => quoteColumn(this.driver, c)).join(', ')}) VALUES (${placeholders.join(', ')}) RETURNING *`
       const result = await this.driver.query<T>(sql, values)
       results.push(result.rows[0])
     }
@@ -135,14 +136,15 @@ export class Repository<T extends Record<string, any>> {
   async update(where: Partial<T>, data: Partial<T>): Promise<T> {
     const { setParts, params: setValues, nextIndex } = buildSetClause(
       this.touch({ ...(data as Record<string, any>) }),
-      (i) => this.driver.getPlaceholder(i)
+      (i) => this.driver.getPlaceholder(i),
+      (name) => quoteColumn(this.driver, name),
     )
 
     const whereConditions = Object.entries(where)
-    const whereParts = whereConditions.map(([key], i) => `${key} = ${this.driver.getPlaceholder(nextIndex + i)}`)
+    const whereParts = whereConditions.map(([key], i) => `${quoteColumn(this.driver, key)} = ${this.driver.getPlaceholder(nextIndex + i)}`)
     const whereValues = whereConditions.map(([, value]) => value)
 
-    const sql = `UPDATE ${this.tableName} SET ${setParts.join(', ')} WHERE ${whereParts.join(' AND ')} RETURNING *`
+    const sql = `UPDATE ${quoteTable(this.driver, this.tableName)} SET ${setParts.join(', ')} WHERE ${whereParts.join(' AND ')} RETURNING *`
     const result = await this.driver.query<T>(sql, [...setValues, ...whereValues])
     return result.rows[0]
   }
@@ -150,14 +152,15 @@ export class Repository<T extends Record<string, any>> {
   async updateMany(where: Partial<T>, data: Partial<T>): Promise<number> {
     const { setParts, params: setValues, nextIndex } = buildSetClause(
       this.touch({ ...(data as Record<string, any>) }),
-      (i) => this.driver.getPlaceholder(i)
+      (i) => this.driver.getPlaceholder(i),
+      (name) => quoteColumn(this.driver, name),
     )
 
     const whereConditions = Object.entries(where)
-    const whereParts = whereConditions.map(([key], i) => `${key} = ${this.driver.getPlaceholder(nextIndex + i)}`)
+    const whereParts = whereConditions.map(([key], i) => `${quoteColumn(this.driver, key)} = ${this.driver.getPlaceholder(nextIndex + i)}`)
     const whereValues = whereConditions.map(([, value]) => value)
 
-    const sql = `UPDATE ${this.tableName} SET ${setParts.join(', ')} WHERE ${whereParts.join(' AND ')}`
+    const sql = `UPDATE ${quoteTable(this.driver, this.tableName)} SET ${setParts.join(', ')} WHERE ${whereParts.join(' AND ')}`
     const result = await this.driver.execute(sql, [...setValues, ...whereValues])
     return result.rowCount
   }
@@ -171,10 +174,10 @@ export class Repository<T extends Record<string, any>> {
     const values = Object.values(data)
     const placeholders = values.map((_, i) => this.driver.getPlaceholder(i + 1))
 
-    const conflictClause = conflictColumns.join(', ')
-    const updateClause = updateColumns.map(col => `${col} = EXCLUDED.${col}`).join(', ')
+    const conflictClause = conflictColumns.map((c) => quoteColumn(this.driver, c)).join(', ')
+    const updateClause = updateColumns.map(col => `${quoteColumn(this.driver, col)} = EXCLUDED.${quoteColumn(this.driver, col)}`).join(', ')
 
-    const sql = `INSERT INTO ${this.tableName} (${columns.join(', ')}) VALUES (${placeholders.join(', ')}) ON CONFLICT (${conflictClause}) DO UPDATE SET ${updateClause} RETURNING *`
+    const sql = `INSERT INTO ${quoteTable(this.driver, this.tableName)} (${columns.map((c) => quoteColumn(this.driver, c)).join(', ')}) VALUES (${placeholders.join(', ')}) ON CONFLICT (${conflictClause}) DO UPDATE SET ${updateClause} RETURNING *`
     const result = await this.driver.query<T>(sql, values)
     return result.rows[0]
   }
@@ -183,38 +186,38 @@ export class Repository<T extends Record<string, any>> {
 
   async delete(where: Partial<T>): Promise<T> {
     const conditions = Object.entries(where)
-    const whereParts = conditions.map(([key], i) => `${key} = ${this.driver.getPlaceholder(i + 1)}`)
+    const whereParts = conditions.map(([key], i) => `${quoteColumn(this.driver, key)} = ${this.driver.getPlaceholder(i + 1)}`)
     const whereValues = conditions.map(([, value]) => value)
 
     if (this.options.softDelete) {
-      const sql = `UPDATE ${this.tableName} SET ${this.options.softDeleteColumn} = NOW() WHERE ${whereParts.join(' AND ')} RETURNING *`
+      const sql = `UPDATE ${quoteTable(this.driver, this.tableName)} SET ${quoteColumn(this.driver, this.options.softDeleteColumn)} = NOW() WHERE ${whereParts.join(' AND ')} RETURNING *`
       const result = await this.driver.query<T>(sql, whereValues)
       return result.rows[0]
     }
 
-    const sql = `DELETE FROM ${this.tableName} WHERE ${whereParts.join(' AND ')} RETURNING *`
+    const sql = `DELETE FROM ${quoteTable(this.driver, this.tableName)} WHERE ${whereParts.join(' AND ')} RETURNING *`
     const result = await this.driver.query<T>(sql, whereValues)
     return result.rows[0]
   }
 
   async deleteMany(where?: Partial<T>): Promise<number> {
     if (!where) {
-      const sql = `DELETE FROM ${this.tableName}`
+      const sql = `DELETE FROM ${quoteTable(this.driver, this.tableName)}`
       const result = await this.driver.execute(sql)
       return result.rowCount
     }
 
     const conditions = Object.entries(where)
-    const whereParts = conditions.map(([key], i) => `${key} = ${this.driver.getPlaceholder(i + 1)}`)
+    const whereParts = conditions.map(([key], i) => `${quoteColumn(this.driver, key)} = ${this.driver.getPlaceholder(i + 1)}`)
     const whereValues = conditions.map(([, value]) => value)
 
     if (this.options.softDelete) {
-      const sql = `UPDATE ${this.tableName} SET ${this.options.softDeleteColumn} = NOW() WHERE ${whereParts.join(' AND ')}`
+      const sql = `UPDATE ${quoteTable(this.driver, this.tableName)} SET ${quoteColumn(this.driver, this.options.softDeleteColumn)} = NOW() WHERE ${whereParts.join(' AND ')}`
       const result = await this.driver.execute(sql, whereValues)
       return result.rowCount
     }
 
-    const sql = `DELETE FROM ${this.tableName} WHERE ${whereParts.join(' AND ')}`
+    const sql = `DELETE FROM ${quoteTable(this.driver, this.tableName)} WHERE ${whereParts.join(' AND ')}`
     const result = await this.driver.execute(sql, whereValues)
     return result.rowCount
   }

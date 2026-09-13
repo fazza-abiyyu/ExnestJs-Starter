@@ -2,6 +2,7 @@
 
 import type { DatabaseDriver } from '../core/types.js'
 import { QueryBuilder } from '../core/query-builder.js'
+import { quoteColumn, quoterFor } from '../relation/quote.js'
 
 export class SubqueryBuilder {
   private placeholderFn: (index: number) => string
@@ -23,14 +24,18 @@ export class SubqueryBuilder {
     return { sql, params }
   }
 
+  private alias(name: string): string {
+    return quoterFor(this.driver.getDialect())(name)
+  }
+
   // ============ SUBQUERY IN WHERE ============
 
   inSubquery(column: string, subquery: { sql: string; params: any[] }): string {
-    return `${column} IN (${subquery.sql})`
+    return `${quoteColumn(this.driver, column)} IN (${subquery.sql})`
   }
 
   notInSubquery(column: string, subquery: { sql: string; params: any[] }): string {
-    return `${column} NOT IN (${subquery.sql})`
+    return `${quoteColumn(this.driver, column)} NOT IN (${subquery.sql})`
   }
 
   exists(subquery: { sql: string; params: any[] }): string {
@@ -45,7 +50,7 @@ export class SubqueryBuilder {
 
   asTable(subquery: { sql: string; params: any[] }, alias: string): { sql: string; params: any[] } {
     return {
-      sql: `(${subquery.sql}) AS ${alias}`,
+      sql: `(${subquery.sql}) AS ${this.alias(alias)}`,
       params: subquery.params,
     }
   }
@@ -53,7 +58,7 @@ export class SubqueryBuilder {
   // ============ SUBQUERY IN SELECT ============
 
   asColumn(subquery: { sql: string; params: any[] }, alias: string): string {
-    return `(${subquery.sql}) AS ${alias}`
+    return `(${subquery.sql}) AS ${this.alias(alias)}`
   }
 
   // ============ SCALAR SUBQUERY ============
@@ -69,19 +74,19 @@ export class SubqueryBuilder {
   }
 
   sumSubquery(column: string, subquery: { sql: string; params: any[] }): string {
-    return `(SELECT SUM(${column}) FROM (${subquery.sql}) AS _subquery)`
+    return `(SELECT SUM(${quoteColumn(this.driver, column)}) FROM (${subquery.sql}) AS _subquery)`
   }
 
   avgSubquery(column: string, subquery: { sql: string; params: any[] }): string {
-    return `(SELECT AVG(${column}) FROM (${subquery.sql}) AS _subquery)`
+    return `(SELECT AVG(${quoteColumn(this.driver, column)}) FROM (${subquery.sql}) AS _subquery)`
   }
 
   minSubquery(column: string, subquery: { sql: string; params: any[] }): string {
-    return `(SELECT MIN(${column}) FROM (${subquery.sql}) AS _subquery)`
+    return `(SELECT MIN(${quoteColumn(this.driver, column)}) FROM (${subquery.sql}) AS _subquery)`
   }
 
   maxSubquery(column: string, subquery: { sql: string; params: any[] }): string {
-    return `(SELECT MAX(${column}) FROM (${subquery.sql}) AS _subquery)`
+    return `(SELECT MAX(${quoteColumn(this.driver, column)}) FROM (${subquery.sql}) AS _subquery)`
   }
 
   // ============ STATIC ============

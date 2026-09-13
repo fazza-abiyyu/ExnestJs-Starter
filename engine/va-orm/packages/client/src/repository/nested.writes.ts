@@ -4,7 +4,7 @@
 // create, connect, connectOrCreate, disconnect, set, update.
 
 import type { DatabaseDriver, ModelMeta, RelationMeta } from '../core/types.js'
-import { ansiQuote } from '../relation/quote.js'
+import { ansiQuote, quoteColumn, quoteTable } from '../relation/quote.js'
 import type { QuoteFn } from '../relation/quote.js'
 import { buildSetClause } from './field.ops.js'
 
@@ -49,19 +49,6 @@ export class NestedWriter {
   }
 
   /**
-   * Quote a COLUMN identifier. VA-ORM DDL is unquoted so the DB folds
-   * identifiers to lowercase — columns must be lowercased to match
-   * (e.g. userId → "userid"), consistent with SELECT/INSERT elsewhere.
-   * Safe on MySQL/SQLite (column resolution is case-insensitive there).
-   * NOTE: table names are intentionally NOT lowercased (MySQL tables
-   * are case-sensitive) — schemas targeting PostgreSQL should use
-   * lowercase table names (e.g. @@map("customers")).
-   */
-  private col(name: string): string {
-    return this.quote(name.toLowerCase())
-  }
-
-  /**
    * App-level field carrying @updatedAt for a model, if the registry knows it.
    */
   private updatedAtField(model: ModelMeta): string | null {
@@ -100,8 +87,8 @@ export class NestedWriter {
     }
     const values = Object.values(touched)
     const placeholders = values.map((_, i) => this.driver.getPlaceholder(i + 1))
-    const quotedColumns = columns.map((c) => this.col(c))
-    const sql = `INSERT INTO ${this.quote(model.table)} (${quotedColumns.join(', ')}) VALUES (${placeholders.join(', ')}) RETURNING *`
+    const quotedColumns = columns.map((c) => quoteColumn(this.driver, c))
+    const sql = `INSERT INTO ${quoteTable(this.driver, model.table)} (${quotedColumns.join(', ')}) VALUES (${placeholders.join(', ')}) RETURNING *`
     const result = await this.driver.query(sql, values)
     return result.rows[0]
   }
@@ -301,8 +288,8 @@ export class NestedWriter {
       const childPk = this.uniqueKeyOf(where)
       const parentIsA = meta.pkModel < meta.targetModel
       const sql =
-        `DELETE FROM ${this.quote(meta.joinTable!)} WHERE ${this.col(parentIsA ? 'A' : 'B')} = ${this.driver.getPlaceholder(1)} ` +
-        `AND ${this.col(parentIsA ? 'B' : 'A')} = ${this.driver.getPlaceholder(2)}`
+        `DELETE FROM ${quoteTable(this.driver, meta.joinTable!)} WHERE ${quoteColumn(this.driver, parentIsA ? 'A' : 'B')} = ${this.driver.getPlaceholder(1)} ` +
+        `AND ${quoteColumn(this.driver, parentIsA ? 'B' : 'A')} = ${this.driver.getPlaceholder(2)}`
       await this.driver.execute(sql, [parentRow[parentPk], found[childPk]])
       return
     }
@@ -329,7 +316,7 @@ export class NestedWriter {
     if (meta.kind === 'many-to-many-implicit' && meta.joinTable) {
       const parentIsA = meta.pkModel < meta.targetModel
       await this.driver.execute(
-        `DELETE FROM ${this.quote(meta.joinTable!)} WHERE ${this.col(parentIsA ? 'A' : 'B')} = ${this.driver.getPlaceholder(1)}`,
+        `DELETE FROM ${quoteTable(this.driver, meta.joinTable!)} WHERE ${quoteColumn(this.driver, parentIsA ? 'A' : 'B')} = ${this.driver.getPlaceholder(1)}`,
         [parentRow[parentPk]]
       )
     } else if (meta.isFkHolder) {
@@ -391,9 +378,9 @@ export class NestedWriter {
     const params: any[] = []
     const clauses = entries.map(([key, value], i) => {
       params.push(value)
-      return `${this.col(key)} = ${this.driver.getPlaceholder(i + 1)}`
+      return `${quoteColumn(this.driver, key)} = ${this.driver.getPlaceholder(i + 1)}`
     })
-    const sql = `SELECT * FROM ${this.quote(model.table)}${clauses.length > 0 ? ` WHERE ${clauses.join(' AND ')}` : ''}`
+    const sql = `SELECT * FROM ${quoteTable(this.driver, model.table)}${clauses.length > 0 ? ` WHERE ${clauses.join(' AND ')}` : ''}`
     const result = await this.driver.query(sql, params)
     return result.rows
   }
@@ -408,13 +395,13 @@ export class NestedWriter {
     const setEntries = Object.entries(touched)
     if (setEntries.length === 0) return
     const whereEntries = Object.entries(where)
-    const { setParts, params, nextIndex } = buildSetClause(touched, (i) => this.driver.getPlaceholder(i), this.quote)
+    const { setParts, params, nextIndex } = buildSetClause(touched, (i) => this.driver.getPlaceholder(i), (name) => quoteColumn(this.driver, name))
     const paramsWithWhere = [...params]
     const whereParts = whereEntries.map(([key], i) => {
       paramsWithWhere.push(where[key])
-      return `${this.col(key)} = ${this.driver.getPlaceholder(nextIndex + i)}`
+      return `${quoteColumn(this.driver, key)} = ${this.driver.getPlaceholder(nextIndex + i)}`
     })
-    const sql = `UPDATE ${this.quote(model.table)} SET ${setParts.join(', ')} WHERE ${whereParts.join(' AND ')}`
+    const sql = `UPDATE ${quoteTable(this.driver, model.table)} SET ${setParts.join(', ')} WHERE ${whereParts.join(' AND ')}`
     await this.driver.execute(sql, paramsWithWhere)
   }
 
@@ -431,7 +418,7 @@ export class NestedWriter {
     const a = parentIsA ? parentRow[parentPk] : childRow[childPk]
     const b = parentIsA ? childRow[childPk] : parentRow[parentPk]
     const sql =
-      `INSERT INTO ${this.quote(meta.joinTable!)} (${this.col('A')}, ${this.col('B')}) VALUES ` +
+      `INSERT INTO ${quoteTable(this.driver, meta.joinTable!)} (${quoteColumn(this.driver, 'A')}, ${quoteColumn(this.driver, 'B')}) VALUES ` +
       `(${this.driver.getPlaceholder(1)}, ${this.driver.getPlaceholder(2)}) ON CONFLICT DO NOTHING`
     await this.driver.execute(sql, [a, b])
   }

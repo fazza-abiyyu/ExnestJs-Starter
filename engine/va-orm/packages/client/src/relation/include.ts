@@ -15,8 +15,9 @@ import type {
 } from '../core/types.js'
 import { buildWhere } from './filters.js'
 import { resolveSelect, stripColumns } from './select.js'
-import { ansiQuote } from './quote.js'
+import { quoteColumn, quoteTable } from './quote.js'
 import type { QuoteFn } from './quote.js'
+import { assertSafeDirection, assertSafeInteger } from '../core/expression.js'
 
 interface ResolvedInclude {
   meta: RelationMeta
@@ -47,9 +48,19 @@ export class IncludeLoader {
   constructor(
     private driver: DatabaseDriver,
     private registry: Map<string, ModelMeta>,
-    quote: QuoteFn = ansiQuote
+    quote?: QuoteFn
   ) {
-    this.quote = quote
+    // Driver-derived quoting (lowercase-folded columns) unless the caller
+    // passes an explicit quoter (e.g. ModelDelegate with its own).
+    this.quote = quote ?? ((name: string) => quoteColumn(this.driver, name))
+  }
+
+  private qc(name: string): string {
+    return quoteColumn(this.driver, name)
+  }
+
+  private qt(name: string): string {
+    return quoteTable(this.driver, name)
   }
 
   async load<T extends Record<string, any>>(
@@ -105,7 +116,7 @@ export class IncludeLoader {
 
     if (where && where.values.length > 0) {
       const placeholders = where.values.map(() => ph())
-      clauses.push(`${this.quote(where.column)} IN (${placeholders.join(', ')})`)
+      clauses.push(`${this.qc(where.column)} IN (${placeholders.join(', ')})`)
       params.push(...where.values)
     } else if (where) {
       return []
@@ -121,17 +132,19 @@ export class IncludeLoader {
     }
 
     const projection = projectionCols
-      ? projectionCols.map((c) => this.quote(c)).join(', ')
+      ? projectionCols.map((c) => this.qc(c)).join(', ')
       : '*'
-    let sql = `SELECT ${projection} FROM ${this.quote(child.table)}`
+    let sql = `SELECT ${projection} FROM ${this.qt(child.table)}`
     if (clauses.length > 0) sql += ` WHERE ${clauses.join(' AND ')}`
     if (opts.orderBy) {
       const order = Object.entries(opts.orderBy)
-        .map(([col, dir]) => `${this.quote(col)} ${(dir as string).toUpperCase()}`)
+        .map(([col, dir]) => `${this.qc(col)} ${assertSafeDirection(dir)}`)
         .join(', ')
       if (order) sql += ` ORDER BY ${order}`
     }
+    assertSafeInteger(opts.take, 'LIMIT')
     if (opts.take !== undefined) sql += ` LIMIT ${opts.take}`
+    assertSafeInteger(opts.skip, 'OFFSET')
     if (opts.skip !== undefined) sql += ` OFFSET ${opts.skip}`
 
     const result = await this.driver.query(sql, params)
@@ -249,12 +262,12 @@ export class IncludeLoader {
 
     const resolvedSelect = resolveSelect(child, resolved.select, resolved.include)
     const projection = resolvedSelect.columns
-      ? [...new Set([...resolvedSelect.columns, childPk])].map((c) => `__c.${this.quote(c)}`).join(', ')
+      ? [...new Set([...resolvedSelect.columns, childPk])].map((c) => `__c.${this.qc(c)}`).join(', ')
       : '__c.*'
     let sql =
-      `SELECT ${projection}, __j.${this.quote(parentCol)} AS __parent_key FROM ${this.quote(child.table)} AS __c ` +
-      `JOIN ${this.quote(meta.joinTable)} AS __j ON __c.${this.quote(childPk)} = __j.${this.quote(childCol)} ` +
-      `WHERE __j.${this.quote(parentCol)} IN (${placeholders.join(', ')})`
+      `SELECT ${projection}, __j.${this.qc(parentCol)} AS __parent_key FROM ${this.qt(child.table)} AS __c ` +
+      `JOIN ${this.qt(meta.joinTable!)} AS __j ON __c.${this.qc(childPk)} = __j.${this.qc(childCol)} ` +
+      `WHERE __j.${this.qc(parentCol)} IN (${placeholders.join(', ')})`
 
     if (resolved.where) {
       const { sql: whereSql, params: whereParams } = this.buildChildWhere(resolved.where, child, paramIndex)

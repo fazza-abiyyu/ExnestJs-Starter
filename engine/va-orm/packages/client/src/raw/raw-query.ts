@@ -1,6 +1,13 @@
 // VA-ORM Raw Query
 
 import type { DatabaseDriver } from '../core/types.js'
+import { quoteColumn, quoteTable } from '../relation/quote.js'
+import { assertSafeInteger } from '../core/expression.js'
+
+/** Escape a value interpolated into a SQL string literal (e.g. tsquery language). */
+function escapeLiteral(value: string): string {
+  return String(value).replace(/'/g, "''")
+}
 
 export class RawQuery {
   constructor(private driver: DatabaseDriver) {}
@@ -63,15 +70,15 @@ export class RawQuery {
 
   toTsQuery(language: string, query: string): string {
     const sanitized = query.replace(/[^\w\s&|!:(-)]/g, '')
-    return `plainto_tsquery('${language}', ${this.driver.getPlaceholder(1)})`
+    return `plainto_tsquery('${escapeLiteral(language)}', ${this.driver.getPlaceholder(1)})`
   }
 
   toTsVector(language: string, column: string): string {
-    return `to_tsvector('${language}', ${column})`
+    return `to_tsvector('${escapeLiteral(language)}', ${quoteColumn(this.driver, column)})`
   }
 
   tsRank(vectorCol: string, query: string, language: string = 'english'): string {
-    return `ts_rank(${vectorCol}, plainto_tsquery('${language}', ${this.driver.getPlaceholder(1)}))`
+    return `ts_rank(${quoteColumn(this.driver, vectorCol)}, plainto_tsquery('${escapeLiteral(language)}', ${this.driver.getPlaceholder(1)}))`
   }
 
   tsHeadline(language: string, column: string, query: string, options?: { startSel?: string; stopSel?: string; maxFragments?: number; maxWords?: number; minWords?: number }): string {
@@ -85,7 +92,7 @@ export class RawQuery {
       if (options.minWords) parts.push(`MinWords=${options.minWords}`)
       if (parts.length > 0) opts = `, '${parts.join(', ')}'`
     }
-    return `ts_headline('${language}', ${column}, plainto_tsquery('${language}', ${this.driver.getPlaceholder(1)})${opts})`
+    return `ts_headline('${escapeLiteral(language)}', ${quoteColumn(this.driver, column)}, plainto_tsquery('${escapeLiteral(language)}', ${this.driver.getPlaceholder(1)})${opts})`
   }
 
   async search<T = any>(
@@ -103,11 +110,11 @@ export class RawQuery {
       offset?: number
     }
   ): Promise<T[]> {
-    const lang = options.language ?? 'english'
-    const searchCol = `${table}.${options.column}`
+    const lang = escapeLiteral(options.language ?? 'english')
+    const searchCol = `${quoteTable(this.driver, table)}.${quoteColumn(this.driver, options.column)}`
     const tsQuery = `plainto_tsquery('${lang}', ${this.driver.getPlaceholder(1)})`
 
-    const selectParts: string[] = [`${table}.*`]
+    const selectParts: string[] = [`${quoteTable(this.driver, table)}.*`]
     const params: any[] = [options.query]
 
     if (options.rank) {
@@ -129,7 +136,7 @@ export class RawQuery {
       selectParts.push(`ts_headline('${lang}', ${searchCol}, ${tsQuery}${opts}) AS headline`)
     }
 
-    let sql = `SELECT ${selectParts.join(', ')} FROM ${table} WHERE ${searchCol} @@ ${tsQuery}`
+    let sql = `SELECT ${selectParts.join(', ')} FROM ${quoteTable(this.driver, table)} WHERE ${searchCol} @@ ${tsQuery}`
 
     if (options.where) {
       sql += ` AND ${options.where}`
@@ -140,6 +147,8 @@ export class RawQuery {
       sql += ` ORDER BY rank DESC`
     }
 
+    assertSafeInteger(options.limit, 'LIMIT')
+    assertSafeInteger(options.offset, 'OFFSET')
     if (options.limit) {
       sql += ` LIMIT ${options.limit}`
     }

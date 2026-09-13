@@ -25,6 +25,7 @@ export interface DatabaseDriver {
   transaction<T>(fn: (driver: DatabaseDriver) => Promise<T>): Promise<T>
   close(): Promise<void>
   getPlaceholder(index: number): string
+  getDialect(): DriverType
 }
 
 // ============ CONNECTION CONFIG ============
