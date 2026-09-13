@@ -1,10 +1,10 @@
 // VA-ORM Schema Parser Spec
 
-import { describe, it, expect } from 'bun:test'
-import { SchemaParser } from '../schema.parser.js'
+import { describe, it, expect } from 'bun:test';
+import { SchemaParser } from '../schema.parser.js';
 
 describe('SchemaParser', () => {
-  const parser = new SchemaParser()
+  const parser = new SchemaParser();
 
   describe('generator', () => {
     it('should parse generator block', () => {
@@ -13,13 +13,13 @@ describe('SchemaParser', () => {
           provider = "va-client-js"
           output = "../generated"
         }
-      `
-      const ast = parser.parse(schema)
-      expect(ast.generator.length).toBe(1)
-      expect(ast.generator[0].name).toBe('client')
-      expect(ast.generator[0].provider).toBe('va-client-js')
-      expect(ast.generator[0].output).toBe('../generated')
-    })
+      `;
+      const ast = parser.parse(schema);
+      expect(ast.generator.length).toBe(1);
+      expect(ast.generator[0].name).toBe('client');
+      expect(ast.generator[0].provider).toBe('va-client-js');
+      expect(ast.generator[0].output).toBe('../generated');
+    });
 
     it('should parse generator with binaryTargets', () => {
       const schema = `
@@ -27,11 +27,11 @@ describe('SchemaParser', () => {
           provider = "va-client-js"
           binaryTargets = ["native", "rhel-openssl-1.0.x"]
         }
-      `
-      const ast = parser.parse(schema)
-      expect(ast.generator[0].binaryTargets).toEqual(['native', 'rhel-openssl-1.0.x'])
-    })
-  })
+      `;
+      const ast = parser.parse(schema);
+      expect(ast.generator[0].binaryTargets).toEqual(['native', 'rhel-openssl-1.0.x']);
+    });
+  });
 
   describe('datasource', () => {
     it('should parse datasource block', () => {
@@ -40,14 +40,14 @@ describe('SchemaParser', () => {
           provider = "postgresql"
           url = env("DATABASE_URL")
         }
-      `
-      const ast = parser.parse(schema)
-      expect(ast.datasource.length).toBe(1)
-      expect(ast.datasource[0].name).toBe('db')
-      expect(ast.datasource[0].provider).toBe('postgresql')
-      expect(ast.datasource[0].url).toBe('env("DATABASE_URL")')
-    })
-  })
+      `;
+      const ast = parser.parse(schema);
+      expect(ast.datasource.length).toBe(1);
+      expect(ast.datasource[0].name).toBe('db');
+      expect(ast.datasource[0].provider).toBe('postgresql');
+      expect(ast.datasource[0].url).toBe('env("DATABASE_URL")');
+    });
+  });
 
   describe('model', () => {
     it('should parse simple model', () => {
@@ -57,12 +57,12 @@ describe('SchemaParser', () => {
           name  String
           email String @unique
         }
-      `
-      const ast = parser.parse(schema)
-      expect(ast.model.length).toBe(1)
-      expect(ast.model[0].name).toBe('User')
-      expect(ast.model[0].fields.length).toBe(3)
-    })
+      `;
+      const ast = parser.parse(schema);
+      expect(ast.model.length).toBe(1);
+      expect(ast.model[0].name).toBe('User');
+      expect(ast.model[0].fields.length).toBe(3);
+    });
 
     it('should parse model with optional fields', () => {
       const schema = `
@@ -72,11 +72,11 @@ describe('SchemaParser', () => {
           bio      String?
           age      Int?
         }
-      `
-      const ast = parser.parse(schema)
-      const bioField = ast.model[0].fields.find(f => f.name === 'bio')
-      expect(bioField?.isOptional).toBe(true)
-    })
+      `;
+      const ast = parser.parse(schema);
+      const bioField = ast.model[0].fields.find((f) => f.name === 'bio');
+      expect(bioField?.isOptional).toBe(true);
+    });
 
     it('should parse model with array fields', () => {
       const schema = `
@@ -84,12 +84,12 @@ describe('SchemaParser', () => {
           id    Int      @id
           tags  String[]
         }
-      `
-      const ast = parser.parse(schema)
-      const tagsField = ast.model[0].fields.find(f => f.name === 'tags')
-      expect(tagsField?.isArray).toBe(true)
-      expect(tagsField?.type).toBe('String')
-    })
+      `;
+      const ast = parser.parse(schema);
+      const tagsField = ast.model[0].fields.find((f) => f.name === 'tags');
+      expect(tagsField?.isArray).toBe(true);
+      expect(tagsField?.type).toBe('String');
+    });
 
     it('should parse model with attributes', () => {
       const schema = `
@@ -100,12 +100,12 @@ describe('SchemaParser', () => {
           @@map("users")
           @@index([email])
         }
-      `
-      const ast = parser.parse(schema)
-      expect(ast.model[0].attributes.length).toBe(2)
-      expect(ast.model[0].attributes[0].name).toBe('@@map')
-      expect(ast.model[0].attributes[1].name).toBe('@@index')
-    })
+      `;
+      const ast = parser.parse(schema);
+      expect(ast.model[0].attributes.length).toBe(2);
+      expect(ast.model[0].attributes[0].name).toBe('@@map');
+      expect(ast.model[0].attributes[1].name).toBe('@@index');
+    });
 
     it('should parse model with relation', () => {
       const schema = `
@@ -119,10 +119,10 @@ describe('SchemaParser', () => {
           author   User @relation(fields: [authorId], references: [id])
           authorId Int
         }
-      `
-      const ast = parser.parse(schema)
-      expect(ast.model.length).toBe(2)
-    })
+      `;
+      const ast = parser.parse(schema);
+      expect(ast.model.length).toBe(2);
+    });
 
     it('should parse multiple models', () => {
       const schema = `
@@ -140,11 +140,11 @@ describe('SchemaParser', () => {
           id   Int    @id
           text String
         }
-      `
-      const ast = parser.parse(schema)
-      expect(ast.model.length).toBe(3)
-    })
-  })
+      `;
+      const ast = parser.parse(schema);
+      expect(ast.model.length).toBe(3);
+    });
+  });
 
   describe('enum', () => {
     it('should parse enum', () => {
@@ -154,12 +154,12 @@ describe('SchemaParser', () => {
           USER
           GUEST
         }
-      `
-      const ast = parser.parse(schema)
-      expect(ast.enum.length).toBe(1)
-      expect(ast.enum[0].name).toBe('Role')
-      expect(ast.enum[0].values.length).toBe(3)
-    })
+      `;
+      const ast = parser.parse(schema);
+      expect(ast.enum.length).toBe(1);
+      expect(ast.enum[0].name).toBe('Role');
+      expect(ast.enum[0].values.length).toBe(3);
+    });
 
     it('should parse multiple enums', () => {
       const schema = `
@@ -172,11 +172,11 @@ describe('SchemaParser', () => {
           ACTIVE
           INACTIVE
         }
-      `
-      const ast = parser.parse(schema)
-      expect(ast.enum.length).toBe(2)
-    })
-  })
+      `;
+      const ast = parser.parse(schema);
+      expect(ast.enum.length).toBe(2);
+    });
+  });
 
   describe('complex schema', () => {
     it('should parse complete schema', () => {
@@ -217,14 +217,14 @@ describe('SchemaParser', () => {
           USER
           GUEST
         }
-      `
-      const ast = parser.parse(schema)
-      expect(ast.generator.length).toBe(1)
-      expect(ast.datasource.length).toBe(1)
-      expect(ast.model.length).toBe(2)
-      expect(ast.enum.length).toBe(1)
-    })
-  })
+      `;
+      const ast = parser.parse(schema);
+      expect(ast.generator.length).toBe(1);
+      expect(ast.datasource.length).toBe(1);
+      expect(ast.model.length).toBe(2);
+      expect(ast.enum.length).toBe(1);
+    });
+  });
 
   describe('error handling', () => {
     it('should throw on invalid syntax', () => {
@@ -232,10 +232,10 @@ describe('SchemaParser', () => {
         model User {
           id Int @id @default(
         }
-      `
-      expect(() => parser.parse(schema)).toThrow()
-    })
-  })
+      `;
+      expect(() => parser.parse(schema)).toThrow();
+    });
+  });
 
   describe('native type attributes', () => {
     it('should parse @db.Text without phantom fields', () => {
@@ -245,23 +245,23 @@ describe('SchemaParser', () => {
           valueEnc String @db.Text
           valueHash String
         }
-      `
-      const ast = parser.parse(schema)
-      const fields = ast.model[0].fields
-      expect(fields.map((f) => f.name)).toEqual(['id', 'valueEnc', 'valueHash'])
-      const valueEnc = fields.find((f) => f.name === 'valueEnc')!
-      expect(valueEnc.attributes.map((a) => a.name)).toContain('@db.Text')
-    })
+      `;
+      const ast = parser.parse(schema);
+      const fields = ast.model[0].fields;
+      expect(fields.map((f) => f.name)).toEqual(['id', 'valueEnc', 'valueHash']);
+      const valueEnc = fields.find((f) => f.name === 'valueEnc')!;
+      expect(valueEnc.attributes.map((a) => a.name)).toContain('@db.Text');
+    });
 
     it('should parse @db.VarChar(255) with args', () => {
       const schema = `
         model User {
           name String @db.VarChar(255)
         }
-      `
-      const ast = parser.parse(schema)
-      const name = ast.model[0].fields[0]
-      expect(name.attributes.map((a) => a.name)).toContain('@db.VarChar')
-    })
-  })
-})
+      `;
+      const ast = parser.parse(schema);
+      const name = ast.model[0].fields[0];
+      expect(name.attributes.map((a) => a.name)).toContain('@db.VarChar');
+    });
+  });
+});

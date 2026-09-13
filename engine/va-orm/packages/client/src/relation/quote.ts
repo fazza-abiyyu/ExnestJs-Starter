@@ -6,30 +6,29 @@
 // camelCase columns (userId, displayName). Quote every identifier.
 // MySQL uses backticks, PostgreSQL/SQLite use double quotes.
 
-import type { DatabaseDriver, DriverType } from '../core/types.js'
+import type { DatabaseDriver, DriverType } from '../core/types.js';
 
-export type QuoteFn = (identifier: string) => string
+export type QuoteFn = (identifier: string) => string;
 
 function quoteParts(identifier: string, wrap: (part: string) => string): string {
-  return identifier.split('.').map(wrap).join('.')
+  return identifier.split('.').map(wrap).join('.');
 }
 
 export function ansiQuote(identifier: string): string {
-  return quoteParts(identifier, (part) => `"${part.replace(/"/g, '""')}"`)
+  return quoteParts(identifier, (part) => `"${part.replace(/"/g, '""')}"`);
 }
 
 export function mysqlQuote(identifier: string): string {
-  return quoteParts(identifier, (part) => `\`${part.replace(/`/g, '``')}\``)
+  return quoteParts(identifier, (part) => `\`${part.replace(/`/g, '``')}\``);
 }
 
 export function quoterFor(driver: 'postgres' | 'mysql' | 'sqlite'): QuoteFn {
-  return driver === 'mysql' ? mysqlQuote : ansiQuote
+  return driver === 'mysql' ? mysqlQuote : ansiQuote;
 }
 
 function quoterForDriver(driver: DatabaseDriver | DriverType): QuoteFn {
-  const dialect: DriverType =
-    typeof driver === 'string' ? driver : driver.getDialect()
-  return quoterFor(dialect)
+  const dialect: DriverType = typeof driver === 'string' ? driver : driver.getDialect();
+  return quoterFor(dialect);
 }
 
 /**
@@ -39,8 +38,8 @@ function quoterForDriver(driver: DatabaseDriver | DriverType): QuoteFn {
  * (or `table.*` part) is preserved — quoting it would break the wildcard.
  */
 export function quoteColumn(driver: DatabaseDriver | DriverType, name: string): string {
-  const quote = quoterForDriver(driver)
-  return quoteParts(name, (part) => (part === '*' ? '*' : quote(part.toLowerCase())))
+  const quote = quoterForDriver(driver);
+  return quoteParts(name, (part) => (part === '*' ? '*' : quote(part.toLowerCase())));
 }
 
 /**
@@ -50,5 +49,5 @@ export function quoteColumn(driver: DatabaseDriver | DriverType, name: string): 
  * names (e.g. @@map("customers")) to match folded DDL.
  */
 export function quoteTable(driver: DatabaseDriver | DriverType, name: string): string {
-  return quoterForDriver(driver)(name)
+  return quoterForDriver(driver)(name);
 }

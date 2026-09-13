@@ -1,26 +1,36 @@
 // VA-ORM Repository
 
-import type { DatabaseDriver, WhereClause, OrderClause, SortDirection, RepositoryOptions, OffsetResult, OffsetOptions, CursorResult, CursorOptions } from '../core/types.js'
-import { QueryBuilder } from '../core/query-builder.js'
-import { ExpressionBuilder } from '../core/expression.js'
-import { buildSetClause } from './field.ops.js'
-import { quoteColumn, quoteTable } from '../relation/quote.js'
+import type {
+  DatabaseDriver,
+  WhereClause,
+  OrderClause,
+  SortDirection,
+  RepositoryOptions,
+  OffsetResult,
+  OffsetOptions,
+  CursorResult,
+  CursorOptions,
+} from '../core/types.js';
+import { QueryBuilder } from '../core/query-builder.js';
+import { ExpressionBuilder } from '../core/expression.js';
+import { buildSetClause } from './field.ops.js';
+import { quoteColumn, quoteTable } from '../relation/quote.js';
 
 export class Repository<T extends Record<string, any>> {
-  private options: Required<Omit<RepositoryOptions, 'updatedAtField'>>
-  private updatedAtField?: string
+  private options: Required<Omit<RepositoryOptions, 'updatedAtField'>>;
+  private updatedAtField?: string;
 
   constructor(
     private driver: DatabaseDriver,
     private tableName: string,
-    options: RepositoryOptions = {}
+    options: RepositoryOptions = {},
   ) {
     this.options = {
       softDelete: options.softDelete ?? false,
       softDeleteColumn: options.softDeleteColumn ?? 'deleted_at',
       camelToSnake: options.camelToSnake ?? true,
-    }
-    this.updatedAtField = options.updatedAtField
+    };
+    this.updatedAtField = options.updatedAtField;
   }
 
   /**
@@ -28,154 +38,170 @@ export class Repository<T extends Record<string, any>> {
    * Explicit values always win. Shallow-copies so caller objects are untouched.
    */
   private touch<D extends Record<string, any>>(data: D): D {
-    const field = this.updatedAtField
-    if (!field || field in data) return data
-    return { ...data, [field]: new Date() }
+    const field = this.updatedAtField;
+    if (!field || field in data) return data;
+    return { ...data, [field]: new Date() };
   }
 
   // ============ CREATE ============
 
   async create(data: Partial<T>): Promise<T> {
-    const touched = this.touch({ ...(data as Record<string, any>) })
-    const columns = Object.keys(touched)
-    const values = Object.values(touched)
-    const placeholders = values.map((_, i) => this.driver.getPlaceholder(i + 1))
+    const touched = this.touch({ ...(data as Record<string, any>) });
+    const columns = Object.keys(touched);
+    const values = Object.values(touched);
+    const placeholders = values.map((_, i) => this.driver.getPlaceholder(i + 1));
 
-    const sql = `INSERT INTO ${quoteTable(this.driver, this.tableName)} (${columns.map((c) => quoteColumn(this.driver, c)).join(', ')}) VALUES (${placeholders.join(', ')}) RETURNING *`
-    const result = await this.driver.query<T>(sql, values)
-    return result.rows[0]
+    const sql = `INSERT INTO ${quoteTable(this.driver, this.tableName)} (${columns.map((c) => quoteColumn(this.driver, c)).join(', ')}) VALUES (${placeholders.join(', ')}) RETURNING *`;
+    const result = await this.driver.query<T>(sql, values);
+    return result.rows[0];
   }
 
   async createMany(data: Partial<T>[]): Promise<T[]> {
-    if (data.length === 0) return []
+    if (data.length === 0) return [];
 
-    const touched = data.map((item) => this.touch({ ...(item as Record<string, any>) }))
-    const columns = Object.keys(touched[0])
-    const columnKey = columns.slice().sort().join('\u0000')
+    const touched = data.map((item) => this.touch({ ...(item as Record<string, any>) }));
+    const columns = Object.keys(touched[0]);
+    const columnKey = columns.slice().sort().join('\u0000');
     for (const item of touched) {
-      const keys = Object.keys(item).sort().join('\u0000')
+      const keys = Object.keys(item).sort().join('\u0000');
       if (keys !== columnKey) {
-        throw new Error('createMany: all rows must share the same column set')
+        throw new Error('createMany: all rows must share the same column set');
       }
     }
-    const results: T[] = []
+    const results: T[] = [];
 
     for (const item of touched) {
-      const values = columns.map((c) => item[c])
-      const placeholders = values.map((_, i) => this.driver.getPlaceholder(i + 1))
-      const sql = `INSERT INTO ${quoteTable(this.driver, this.tableName)} (${columns.map((c) => quoteColumn(this.driver, c)).join(', ')}) VALUES (${placeholders.join(', ')}) RETURNING *`
-      const result = await this.driver.query<T>(sql, values)
-      results.push(result.rows[0])
+      const values = columns.map((c) => item[c]);
+      const placeholders = values.map((_, i) => this.driver.getPlaceholder(i + 1));
+      const sql = `INSERT INTO ${quoteTable(this.driver, this.tableName)} (${columns.map((c) => quoteColumn(this.driver, c)).join(', ')}) VALUES (${placeholders.join(', ')}) RETURNING *`;
+      const result = await this.driver.query<T>(sql, values);
+      results.push(result.rows[0]);
     }
 
-    return results
+    return results;
   }
 
   // ============ READ ============
 
   async findUnique(where: Partial<T>): Promise<T | null> {
-    const conditions = Object.entries(where)
+    const conditions = Object.entries(where);
     const whereClause = conditions.map(([key, value], i) => ({
       column: key,
       operator: '=' as const,
       value,
-    }))
+    }));
 
-    const builder = new QueryBuilder<T>(this.driver, this.tableName)
+    const builder = new QueryBuilder<T>(this.driver, this.tableName);
     builder.where((eb) => {
       for (const clause of whereClause) {
-        eb.eq(clause.column, clause.value)
+        eb.eq(clause.column, clause.value);
       }
-    })
+    });
 
-    return builder.first()
+    return builder.first();
   }
 
   async findFirst(where?: Partial<T>): Promise<T | null> {
-    const builder = new QueryBuilder<T>(this.driver, this.tableName)
+    const builder = new QueryBuilder<T>(this.driver, this.tableName);
 
     if (where) {
       builder.where((eb) => {
         for (const [key, value] of Object.entries(where)) {
-          eb.eq(key, value)
+          eb.eq(key, value);
         }
-      })
+      });
     }
 
-    return builder.first()
+    return builder.first();
   }
 
-  async findMany(options: {
-    where?: Partial<T>
-    orderBy?: { [K in keyof T]?: SortDirection }
-    limit?: number
-    offset?: number
-  } = {}): Promise<T[]> {
-    const builder = new QueryBuilder<T>(this.driver, this.tableName)
+  async findMany(
+    options: {
+      where?: Partial<T>;
+      orderBy?: { [K in keyof T]?: SortDirection };
+      limit?: number;
+      offset?: number;
+    } = {},
+  ): Promise<T[]> {
+    const builder = new QueryBuilder<T>(this.driver, this.tableName);
 
     if (options.where) {
       builder.where((eb) => {
         for (const [key, value] of Object.entries(options.where!)) {
-          eb.eq(key, value)
+          eb.eq(key, value);
         }
-      })
+      });
     }
 
     if (options.orderBy) {
       for (const [key, direction] of Object.entries(options.orderBy)) {
-        builder.orderBy(key, direction as SortDirection)
+        builder.orderBy(key, direction as SortDirection);
       }
     }
 
     if (options.limit !== undefined) {
-      builder.limit(options.limit)
+      builder.limit(options.limit);
     }
 
     if (options.offset !== undefined) {
-      builder.offset(options.offset)
+      builder.offset(options.offset);
     }
 
-    return builder.execute()
+    return builder.execute();
   }
 
   // ============ UPDATE ============
 
   async update(where: Partial<T>, data: Partial<T>): Promise<T> {
     if (Object.keys(where).length === 0) {
-      throw new Error('refusing UPDATE without WHERE')
+      throw new Error('refusing UPDATE without WHERE');
     }
-    const { setParts, params: setValues, nextIndex } = buildSetClause(
+    const {
+      setParts,
+      params: setValues,
+      nextIndex,
+    } = buildSetClause(
       this.touch({ ...(data as Record<string, any>) }),
       (i) => this.driver.getPlaceholder(i),
       (name) => quoteColumn(this.driver, name),
-    )
+    );
 
-    const whereConditions = Object.entries(where)
-    const whereParts = whereConditions.map(([key], i) => `${quoteColumn(this.driver, key)} = ${this.driver.getPlaceholder(nextIndex + i)}`)
-    const whereValues = whereConditions.map(([, value]) => value)
+    const whereConditions = Object.entries(where);
+    const whereParts = whereConditions.map(
+      ([key], i) =>
+        `${quoteColumn(this.driver, key)} = ${this.driver.getPlaceholder(nextIndex + i)}`,
+    );
+    const whereValues = whereConditions.map(([, value]) => value);
 
-    const sql = `UPDATE ${quoteTable(this.driver, this.tableName)} SET ${setParts.join(', ')} WHERE ${whereParts.join(' AND ')} RETURNING *`
-    const result = await this.driver.query<T>(sql, [...setValues, ...whereValues])
-    return result.rows[0]
+    const sql = `UPDATE ${quoteTable(this.driver, this.tableName)} SET ${setParts.join(', ')} WHERE ${whereParts.join(' AND ')} RETURNING *`;
+    const result = await this.driver.query<T>(sql, [...setValues, ...whereValues]);
+    return result.rows[0];
   }
 
   async updateMany(where: Partial<T>, data: Partial<T>): Promise<number> {
     if (Object.keys(where).length === 0) {
-      throw new Error('refusing UPDATE without WHERE')
+      throw new Error('refusing UPDATE without WHERE');
     }
-    const { setParts, params: setValues, nextIndex } = buildSetClause(
+    const {
+      setParts,
+      params: setValues,
+      nextIndex,
+    } = buildSetClause(
       this.touch({ ...(data as Record<string, any>) }),
       (i) => this.driver.getPlaceholder(i),
       (name) => quoteColumn(this.driver, name),
-    )
+    );
 
-    const whereConditions = Object.entries(where)
-    const whereParts = whereConditions.map(([key], i) => `${quoteColumn(this.driver, key)} = ${this.driver.getPlaceholder(nextIndex + i)}`)
-    const whereValues = whereConditions.map(([, value]) => value)
+    const whereConditions = Object.entries(where);
+    const whereParts = whereConditions.map(
+      ([key], i) =>
+        `${quoteColumn(this.driver, key)} = ${this.driver.getPlaceholder(nextIndex + i)}`,
+    );
+    const whereValues = whereConditions.map(([, value]) => value);
 
-    const sql = `UPDATE ${quoteTable(this.driver, this.tableName)} SET ${setParts.join(', ')} WHERE ${whereParts.join(' AND ')}`
-    const result = await this.driver.execute(sql, [...setValues, ...whereValues])
-    return result.rowCount
+    const sql = `UPDATE ${quoteTable(this.driver, this.tableName)} SET ${setParts.join(', ')} WHERE ${whereParts.join(' AND ')}`;
+    const result = await this.driver.execute(sql, [...setValues, ...whereValues]);
+    return result.rowCount;
   }
 
   // ============ UPSERT ============
@@ -183,37 +209,41 @@ export class Repository<T extends Record<string, any>> {
   // controls updateColumns explicitly, so implicit columns would be inconsistent.
 
   async upsert(data: Partial<T>, conflictColumns: string[], updateColumns: string[]): Promise<T> {
-    const columns = Object.keys(data)
-    const values = Object.values(data)
-    const placeholders = values.map((_, i) => this.driver.getPlaceholder(i + 1))
+    const columns = Object.keys(data);
+    const values = Object.values(data);
+    const placeholders = values.map((_, i) => this.driver.getPlaceholder(i + 1));
 
-    const conflictClause = conflictColumns.map((c) => quoteColumn(this.driver, c)).join(', ')
-    const updateClause = updateColumns.map(col => `${quoteColumn(this.driver, col)} = EXCLUDED.${quoteColumn(this.driver, col)}`).join(', ')
+    const conflictClause = conflictColumns.map((c) => quoteColumn(this.driver, c)).join(', ');
+    const updateClause = updateColumns
+      .map((col) => `${quoteColumn(this.driver, col)} = EXCLUDED.${quoteColumn(this.driver, col)}`)
+      .join(', ');
 
-    const sql = `INSERT INTO ${quoteTable(this.driver, this.tableName)} (${columns.map((c) => quoteColumn(this.driver, c)).join(', ')}) VALUES (${placeholders.join(', ')}) ON CONFLICT (${conflictClause}) DO UPDATE SET ${updateClause} RETURNING *`
-    const result = await this.driver.query<T>(sql, values)
-    return result.rows[0]
+    const sql = `INSERT INTO ${quoteTable(this.driver, this.tableName)} (${columns.map((c) => quoteColumn(this.driver, c)).join(', ')}) VALUES (${placeholders.join(', ')}) ON CONFLICT (${conflictClause}) DO UPDATE SET ${updateClause} RETURNING *`;
+    const result = await this.driver.query<T>(sql, values);
+    return result.rows[0];
   }
 
   // ============ DELETE ============
 
   async delete(where: Partial<T>): Promise<T> {
     if (Object.keys(where).length === 0) {
-      throw new Error('refusing DELETE without WHERE')
+      throw new Error('refusing DELETE without WHERE');
     }
-    const conditions = Object.entries(where)
-    const whereParts = conditions.map(([key], i) => `${quoteColumn(this.driver, key)} = ${this.driver.getPlaceholder(i + 1)}`)
-    const whereValues = conditions.map(([, value]) => value)
+    const conditions = Object.entries(where);
+    const whereParts = conditions.map(
+      ([key], i) => `${quoteColumn(this.driver, key)} = ${this.driver.getPlaceholder(i + 1)}`,
+    );
+    const whereValues = conditions.map(([, value]) => value);
 
     if (this.options.softDelete) {
-      const sql = `UPDATE ${quoteTable(this.driver, this.tableName)} SET ${quoteColumn(this.driver, this.options.softDeleteColumn)} = NOW() WHERE ${whereParts.join(' AND ')} RETURNING *`
-      const result = await this.driver.query<T>(sql, whereValues)
-      return result.rows[0]
+      const sql = `UPDATE ${quoteTable(this.driver, this.tableName)} SET ${quoteColumn(this.driver, this.options.softDeleteColumn)} = NOW() WHERE ${whereParts.join(' AND ')} RETURNING *`;
+      const result = await this.driver.query<T>(sql, whereValues);
+      return result.rows[0];
     }
 
-    const sql = `DELETE FROM ${quoteTable(this.driver, this.tableName)} WHERE ${whereParts.join(' AND ')} RETURNING *`
-    const result = await this.driver.query<T>(sql, whereValues)
-    return result.rows[0]
+    const sql = `DELETE FROM ${quoteTable(this.driver, this.tableName)} WHERE ${whereParts.join(' AND ')} RETURNING *`;
+    const result = await this.driver.query<T>(sql, whereValues);
+    return result.rows[0];
   }
 
   /**
@@ -225,22 +255,24 @@ export class Repository<T extends Record<string, any>> {
     if (!where || Object.keys(where).length === 0) {
       throw new Error(
         'refusing deleteMany without WHERE — use deleteAll() to remove every row intentionally',
-      )
+      );
     }
 
-    const conditions = Object.entries(where)
-    const whereParts = conditions.map(([key], i) => `${quoteColumn(this.driver, key)} = ${this.driver.getPlaceholder(i + 1)}`)
-    const whereValues = conditions.map(([, value]) => value)
+    const conditions = Object.entries(where);
+    const whereParts = conditions.map(
+      ([key], i) => `${quoteColumn(this.driver, key)} = ${this.driver.getPlaceholder(i + 1)}`,
+    );
+    const whereValues = conditions.map(([, value]) => value);
 
     if (this.options.softDelete) {
-      const sql = `UPDATE ${quoteTable(this.driver, this.tableName)} SET ${quoteColumn(this.driver, this.options.softDeleteColumn)} = NOW() WHERE ${whereParts.join(' AND ')}`
-      const result = await this.driver.execute(sql, whereValues)
-      return result.rowCount
+      const sql = `UPDATE ${quoteTable(this.driver, this.tableName)} SET ${quoteColumn(this.driver, this.options.softDeleteColumn)} = NOW() WHERE ${whereParts.join(' AND ')}`;
+      const result = await this.driver.execute(sql, whereValues);
+      return result.rowCount;
     }
 
-    const sql = `DELETE FROM ${quoteTable(this.driver, this.tableName)} WHERE ${whereParts.join(' AND ')}`
-    const result = await this.driver.execute(sql, whereValues)
-    return result.rowCount
+    const sql = `DELETE FROM ${quoteTable(this.driver, this.tableName)} WHERE ${whereParts.join(' AND ')}`;
+    const result = await this.driver.execute(sql, whereValues);
+    return result.rowCount;
   }
 
   /**
@@ -249,50 +281,55 @@ export class Repository<T extends Record<string, any>> {
    */
   async deleteAll(): Promise<number> {
     if (this.options.softDelete) {
-      const sql = `UPDATE ${quoteTable(this.driver, this.tableName)} SET ${quoteColumn(this.driver, this.options.softDeleteColumn)} = NOW()`
-      const result = await this.driver.execute(sql)
-      return result.rowCount
+      const sql = `UPDATE ${quoteTable(this.driver, this.tableName)} SET ${quoteColumn(this.driver, this.options.softDeleteColumn)} = NOW()`;
+      const result = await this.driver.execute(sql);
+      return result.rowCount;
     }
 
-    const sql = `DELETE FROM ${quoteTable(this.driver, this.tableName)}`
-    const result = await this.driver.execute(sql)
-    return result.rowCount
+    const sql = `DELETE FROM ${quoteTable(this.driver, this.tableName)}`;
+    const result = await this.driver.execute(sql);
+    return result.rowCount;
   }
 
   // ============ AGGREGATE ============
 
   async count(where?: Partial<T>): Promise<number> {
-    const builder = new QueryBuilder(this.driver, this.tableName)
+    const builder = new QueryBuilder(this.driver, this.tableName);
 
     if (where) {
       builder.where((eb) => {
         for (const [key, value] of Object.entries(where)) {
-          eb.eq(key, value)
+          eb.eq(key, value);
         }
-      })
+      });
     }
 
-    return builder.count()
+    return builder.count();
   }
 
   async exists(where?: Partial<T>): Promise<boolean> {
-    const count = await this.count(where)
-    return count > 0
+    const count = await this.count(where);
+    return count > 0;
   }
 
   // ============ PAGINATION ============
 
-  async paginate(options: OffsetOptions & { where?: Partial<T>; orderBy?: { [K in keyof T]?: SortDirection } } = {}): Promise<OffsetResult<T>> {
-    const page = options.page ?? 1
-    const limit = options.limit ?? 10
-    const skip = options.skip ?? (page - 1) * limit
+  async paginate(
+    options: OffsetOptions & {
+      where?: Partial<T>;
+      orderBy?: { [K in keyof T]?: SortDirection };
+    } = {},
+  ): Promise<OffsetResult<T>> {
+    const page = options.page ?? 1;
+    const limit = options.limit ?? 10;
+    const skip = options.skip ?? (page - 1) * limit;
 
     const [items, total] = await Promise.all([
       this.findMany({ ...options, limit, offset: skip }),
       this.count(options.where),
-    ])
+    ]);
 
-    const totalPages = Math.ceil(total / limit)
+    const totalPages = Math.ceil(total / limit);
 
     return {
       items,
@@ -303,81 +340,86 @@ export class Repository<T extends Record<string, any>> {
       totalPages,
       hasNext: page < totalPages,
       hasPrevious: page > 1,
-    }
+    };
   }
 
-  async cursorPaginate(options: CursorOptions & { where?: Partial<T>; orderBy?: { [K in keyof T]?: SortDirection } } = {}): Promise<CursorResult<T>> {
-    const limit = options.limit ?? 10
-    const builder = new QueryBuilder<T>(this.driver, this.tableName)
+  async cursorPaginate(
+    options: CursorOptions & {
+      where?: Partial<T>;
+      orderBy?: { [K in keyof T]?: SortDirection };
+    } = {},
+  ): Promise<CursorResult<T>> {
+    const limit = options.limit ?? 10;
+    const builder = new QueryBuilder<T>(this.driver, this.tableName);
 
     if (options.where) {
       builder.where((eb) => {
         for (const [key, value] of Object.entries(options.where!)) {
-          eb.eq(key, value)
+          eb.eq(key, value);
         }
-      })
+      });
     }
 
     if (options.cursor) {
       // Simple cursor implementation using id
       builder.where((eb) => {
-        eb.gt('id', options.cursor)
-      })
+        eb.gt('id', options.cursor);
+      });
     }
 
     if (options.orderBy) {
       for (const [key, direction] of Object.entries(options.orderBy)) {
-        builder.orderBy(key, direction as SortDirection)
+        builder.orderBy(key, direction as SortDirection);
       }
     }
 
-    builder.limit(limit + 1) // Fetch one extra to determine if there are more
+    builder.limit(limit + 1); // Fetch one extra to determine if there are more
 
-    const items = await builder.execute()
-    const hasMore = items.length > limit
-    const resultItems = hasMore ? items.slice(0, limit) : items
+    const items = await builder.execute();
+    const hasMore = items.length > limit;
+    const resultItems = hasMore ? items.slice(0, limit) : items;
 
     return {
       items: resultItems,
       nextCursor: hasMore ? resultItems[resultItems.length - 1]?.id : undefined,
       hasMore,
       hasPrevious: !!options.cursor,
-    }
+    };
   }
 
   // ============ BATCH ============
 
   async transaction<R>(fn: (repo: Repository<T>) => Promise<R>): Promise<R> {
     return this.driver.transaction(async (driver) => {
-      const repo = new Repository<T>(driver, this.tableName, this.options)
-      return fn(repo)
-    })
+      const repo = new Repository<T>(driver, this.tableName, this.options);
+      return fn(repo);
+    });
   }
 
   // ============ RAW QUERY ============
 
   async raw<R = any>(sql: string, params?: any[]): Promise<R[]> {
-    const result = await this.driver.query<R>(sql, params)
-    return result.rows
+    const result = await this.driver.query<R>(sql, params);
+    return result.rows;
   }
 
   async rawOne<R = any>(sql: string, params?: any[]): Promise<R | null> {
-    const result = await this.driver.query<R>(sql, params)
-    return result.rows[0] || null
+    const result = await this.driver.query<R>(sql, params);
+    return result.rows[0] || null;
   }
 
   async rawExecute(sql: string, params?: any[]): Promise<number> {
-    const result = await this.driver.execute(sql, params)
-    return result.rowCount
+    const result = await this.driver.execute(sql, params);
+    return result.rowCount;
   }
 
   // ============ QUERY BUILDER ============
 
   query(): QueryBuilder<T> {
-    return new QueryBuilder<T>(this.driver, this.tableName)
+    return new QueryBuilder<T>(this.driver, this.tableName);
   }
 
   expression(): ExpressionBuilder {
-    return ExpressionBuilder.create((i) => this.driver.getPlaceholder(i))
+    return ExpressionBuilder.create((i) => this.driver.getPlaceholder(i));
   }
 }

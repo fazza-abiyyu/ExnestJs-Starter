@@ -1,36 +1,36 @@
 // VA-ORM REST Pagination Adapter
 
-import type { OffsetResult, CursorResult, KeysetResult } from '../../core/types.js'
-import { safeJsonParse } from '../../core/security.js'
+import type { OffsetResult, CursorResult, KeysetResult } from '../../core/types.js';
+import { safeJsonParse } from '../../core/security.js';
 
 export interface RestQueryParams {
-  page?: number
-  limit?: number
-  offset?: number
-  cursor?: string
-  after?: string
-  sort?: string
-  order?: 'asc' | 'desc'
-  fields?: string
+  page?: number;
+  limit?: number;
+  offset?: number;
+  cursor?: string;
+  after?: string;
+  sort?: string;
+  order?: 'asc' | 'desc';
+  fields?: string;
 }
 
 export interface RestResponse<T> {
-  data: T[]
+  data: T[];
   meta: {
-    total: number
-    page: number
-    limit: number
-    totalPages: number
-    hasNext: boolean
-    hasPrevious: boolean
-  }
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+    hasNext: boolean;
+    hasPrevious: boolean;
+  };
   links?: {
-    self: string
-    next?: string
-    previous?: string
-    first?: string
-    last?: string
-  }
+    self: string;
+    next?: string;
+    previous?: string;
+    first?: string;
+    last?: string;
+  };
 }
 
 export class RestAdapter {
@@ -50,35 +50,36 @@ export class RestAdapter {
       links: {
         self: baseUrl,
       },
-    }
+    };
 
     if (result.hasNext) {
-      const nextParams = new URLSearchParams()
-      nextParams.set('page', String(result.page + 1))
-      nextParams.set('limit', String(result.limit))
-      response.links!.next = `${baseUrl}?${nextParams.toString()}`
+      const nextParams = new URLSearchParams();
+      nextParams.set('page', String(result.page + 1));
+      nextParams.set('limit', String(result.limit));
+      response.links!.next = `${baseUrl}?${nextParams.toString()}`;
     }
 
     if (result.hasPrevious) {
-      const prevParams = new URLSearchParams()
-      prevParams.set('page', String(result.page - 1))
-      prevParams.set('limit', String(result.limit))
-      response.links!.previous = `${baseUrl}?${prevParams.toString()}`
+      const prevParams = new URLSearchParams();
+      prevParams.set('page', String(result.page - 1));
+      prevParams.set('limit', String(result.limit));
+      response.links!.previous = `${baseUrl}?${prevParams.toString()}`;
     }
 
-    return response
+    return response;
   }
 
   static toOffsetOptions(params: RestQueryParams): {
-    page: number
-    limit: number
-    skip: number
+    page: number;
+    limit: number;
+    skip: number;
   } {
-    const limit = params.limit ?? 10
-    const skip = params.offset ?? ((params.page ?? 1) - 1) * limit
-    const page = params.page ?? (params.offset !== undefined ? Math.floor(params.offset / limit) + 1 : 1)
+    const limit = params.limit ?? 10;
+    const skip = params.offset ?? ((params.page ?? 1) - 1) * limit;
+    const page =
+      params.page ?? (params.offset !== undefined ? Math.floor(params.offset / limit) + 1 : 1);
 
-    return { page, limit, skip }
+    return { page, limit, skip };
   }
 
   // ============ CURSOR PAGINATION ============
@@ -97,27 +98,27 @@ export class RestAdapter {
       links: {
         self: baseUrl,
       },
-    }
+    };
 
     if (result.hasMore && result.nextCursor) {
-      const nextParams = new URLSearchParams()
-      nextParams.set('cursor', result.nextCursor)
-      response.links!.next = `${baseUrl}?${nextParams.toString()}`
+      const nextParams = new URLSearchParams();
+      nextParams.set('cursor', result.nextCursor);
+      response.links!.next = `${baseUrl}?${nextParams.toString()}`;
     }
 
-    return response
+    return response;
   }
 
   static toCursorOptions(params: RestQueryParams): {
-    cursor?: string
-    limit: number
-    direction: 'forward' | 'backward'
+    cursor?: string;
+    limit: number;
+    direction: 'forward' | 'backward';
   } {
     return {
       cursor: params.cursor,
       limit: params.limit ?? 10,
       direction: 'forward',
-    }
+    };
   }
 
   // ============ KEYSET PAGINATION ============
@@ -136,49 +137,52 @@ export class RestAdapter {
       links: {
         self: baseUrl,
       },
-    }
+    };
 
     if (result.hasMore && result.nextAfter) {
-      const nextParams = new URLSearchParams()
-      nextParams.set('after', JSON.stringify(result.nextAfter))
-      response.links!.next = `${baseUrl}?${nextParams.toString()}`
+      const nextParams = new URLSearchParams();
+      nextParams.set('after', JSON.stringify(result.nextAfter));
+      response.links!.next = `${baseUrl}?${nextParams.toString()}`;
     }
 
-    return response
+    return response;
   }
 
   static toKeysetOptions(params: RestQueryParams): {
-    after?: Record<string, any>
-    limit: number
-    direction: 'forward' | 'backward'
+    after?: Record<string, any>;
+    limit: number;
+    direction: 'forward' | 'backward';
   } {
-    let after: Record<string, any> | undefined
+    let after: Record<string, any> | undefined;
     if (params.after) {
-      after = safeJsonParse<Record<string, any>>(params.after)
+      after = safeJsonParse<Record<string, any>>(params.after);
     }
 
     return {
       after,
       limit: params.limit ?? 10,
       direction: 'forward',
-    }
+    };
   }
 
   // ============ SORT PARSING ============
 
-  static parseSort(sort?: string, order?: 'asc' | 'desc'): Array<{ column: string; direction: 'asc' | 'desc' }> {
-    if (!sort) return []
+  static parseSort(
+    sort?: string,
+    order?: 'asc' | 'desc',
+  ): Array<{ column: string; direction: 'asc' | 'desc' }> {
+    if (!sort) return [];
 
-    return sort.split(',').map(column => ({
+    return sort.split(',').map((column) => ({
       column: column.trim(),
       direction: order ?? 'asc',
-    }))
+    }));
   }
 
   // ============ FIELDS PARSING ============
 
   static parseFields(fields?: string): string[] {
-    if (!fields) return []
-    return fields.split(',').map(f => f.trim())
+    if (!fields) return [];
+    return fields.split(',').map((f) => f.trim());
   }
 }

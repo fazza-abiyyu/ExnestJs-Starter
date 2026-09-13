@@ -3,49 +3,45 @@
 // Prisma-style aggregate/groupBy/count with WhereInput filters,
 // HAVING on aggregates, quoting, and cross-driver placeholders.
 
-import type {
-  DatabaseDriver,
-  ModelMeta,
-  WhereInput,
-} from '../core/types.js'
-import { buildWhere } from '../relation/filters.js'
-import { quoteColumn, quoteTable } from '../relation/quote.js'
-import type { QuoteFn } from '../relation/quote.js'
-import { assertSafeDirection, assertSafeInteger } from '../core/expression.js'
+import type { DatabaseDriver, ModelMeta, WhereInput } from '../core/types.js';
+import { buildWhere } from '../relation/filters.js';
+import { quoteColumn, quoteTable } from '../relation/quote.js';
+import type { QuoteFn } from '../relation/quote.js';
+import { assertSafeDirection, assertSafeInteger } from '../core/expression.js';
 
 export interface AggregateArgs {
-  where?: WhereInput
-  _count?: boolean | { _all?: boolean } | string[]
-  _sum?: string[]
-  _avg?: string[]
-  _min?: string[]
-  _max?: string[]
+  where?: WhereInput;
+  _count?: boolean | { _all?: boolean } | string[];
+  _sum?: string[];
+  _avg?: string[];
+  _min?: string[];
+  _max?: string[];
 }
 
 export interface GroupByArgs extends AggregateArgs {
-  by: string[]
-  having?: AggregateHaving
-  orderBy?: Record<string, 'asc' | 'desc'>
-  take?: number
-  skip?: number
+  by: string[];
+  having?: AggregateHaving;
+  orderBy?: Record<string, 'asc' | 'desc'>;
+  take?: number;
+  skip?: number;
 }
 
 export type AggregateHaving = {
   [K in '_count' | '_sum' | '_avg' | '_min' | '_max']?: {
-    _all?: ScalarCondition
-    [field: string]: ScalarCondition | undefined
-  }
-}
+    _all?: ScalarCondition;
+    [field: string]: ScalarCondition | undefined;
+  };
+};
 
 export interface ScalarCondition {
-  equals?: any
-  not?: any
-  in?: any[]
-  notIn?: any[]
-  lt?: any
-  lte?: any
-  gt?: any
-  gte?: any
+  equals?: any;
+  not?: any;
+  in?: any[];
+  notIn?: any[];
+  lt?: any;
+  lte?: any;
+  gt?: any;
+  gte?: any;
 }
 
 const AGGREGATE_FNS: Record<string, string> = {
@@ -54,190 +50,207 @@ const AGGREGATE_FNS: Record<string, string> = {
   _avg: 'AVG',
   _min: 'MIN',
   _max: 'MAX',
-}
+};
 
 function aggregateExpression(fn: string, target: string, quote: QuoteFn): string {
-  if (target === '_all' || target === '*') return `${fn}(*)`
-  return `${fn}(${quote(target)})`
+  if (target === '_all' || target === '*') return `${fn}(*)`;
+  return `${fn}(${quote(target)})`;
 }
 
 function assertAggregateFn(fn: string): string {
   if (!(fn in AGGREGATE_FNS)) {
-    throw new Error(`Unsafe aggregate function rejected: ${JSON.stringify(fn)}`)
+    throw new Error(`Unsafe aggregate function rejected: ${JSON.stringify(fn)}`);
   }
-  return AGGREGATE_FNS[fn]
+  return AGGREGATE_FNS[fn];
 }
 
-function applyScalarCondition(parts: string[], params: any[], column: string, cond: ScalarCondition, ph: () => string): void {
+function applyScalarCondition(
+  parts: string[],
+  params: any[],
+  column: string,
+  cond: ScalarCondition,
+  ph: () => string,
+): void {
   if (cond.equals !== undefined) {
-    parts.push(`${column} = ${ph()}`)
-    params.push(cond.equals)
+    parts.push(`${column} = ${ph()}`);
+    params.push(cond.equals);
   }
   if (cond.not !== undefined) {
-    parts.push(`${column} != ${ph()}`)
-    params.push(cond.not)
+    parts.push(`${column} != ${ph()}`);
+    params.push(cond.not);
   }
   if (cond.in !== undefined) {
-    parts.push(`${column} IN (${cond.in.map(() => ph()).join(', ')})`)
-    params.push(...cond.in)
+    parts.push(`${column} IN (${cond.in.map(() => ph()).join(', ')})`);
+    params.push(...cond.in);
   }
   if (cond.notIn !== undefined) {
-    parts.push(`${column} NOT IN (${cond.notIn.map(() => ph()).join(', ')})`)
-    params.push(...cond.notIn)
+    parts.push(`${column} NOT IN (${cond.notIn.map(() => ph()).join(', ')})`);
+    params.push(...cond.notIn);
   }
   if (cond.lt !== undefined) {
-    parts.push(`${column} < ${ph()}`)
-    params.push(cond.lt)
+    parts.push(`${column} < ${ph()}`);
+    params.push(cond.lt);
   }
   if (cond.lte !== undefined) {
-    parts.push(`${column} <= ${ph()}`)
-    params.push(cond.lte)
+    parts.push(`${column} <= ${ph()}`);
+    params.push(cond.lte);
   }
   if (cond.gt !== undefined) {
-    parts.push(`${column} > ${ph()}`)
-    params.push(cond.gt)
+    parts.push(`${column} > ${ph()}`);
+    params.push(cond.gt);
   }
   if (cond.gte !== undefined) {
-    parts.push(`${column} >= ${ph()}`)
-    params.push(cond.gte)
+    parts.push(`${column} >= ${ph()}`);
+    params.push(cond.gte);
   }
 }
 
 export class AggregationRepository<T extends Record<string, any>> {
-  private quote: QuoteFn
+  private quote: QuoteFn;
 
   constructor(
     private driver: DatabaseDriver,
     private tableName: string,
-    quote?: QuoteFn
+    quote?: QuoteFn,
   ) {
     // Driver-derived quoting (lowercase-folded columns) unless the caller
     // passes an explicit quoter (e.g. ModelDelegate with its own).
-    this.quote = quote ?? ((name: string) => quoteColumn(this.driver, name))
+    this.quote = quote ?? ((name: string) => quoteColumn(this.driver, name));
   }
 
   private qc(name: string): string {
-    return quoteColumn(this.driver, name)
+    return quoteColumn(this.driver, name);
   }
 
   private qt(name: string): string {
-    return quoteTable(this.driver, name)
+    return quoteTable(this.driver, name);
   }
 
   private meta(): ModelMeta {
-    return { name: '', table: this.tableName, primaryKey: 'id', relations: new Map() }
+    return { name: '', table: this.tableName, primaryKey: 'id', relations: new Map() };
   }
 
   private selectAggregates(args: AggregateArgs): string[] {
-    const selectParts: string[] = []
+    const selectParts: string[] = [];
 
-    if (args._count === true || (typeof args._count === 'object' && !Array.isArray(args._count) && (args._count as any)._all)) {
-      selectParts.push('COUNT(*) as _count')
+    if (
+      args._count === true ||
+      (typeof args._count === 'object' && !Array.isArray(args._count) && (args._count as any)._all)
+    ) {
+      selectParts.push('COUNT(*) as _count');
     } else if (Array.isArray(args._count)) {
       for (const field of args._count) {
-        selectParts.push(`COUNT(${this.qc(field)}) as _count_${field}`)
+        selectParts.push(`COUNT(${this.qc(field)}) as _count_${field}`);
       }
     }
 
     for (const field of args._sum ?? []) {
-      selectParts.push(`SUM(${this.qc(field)}) as _sum_${field}`)
+      selectParts.push(`SUM(${this.qc(field)}) as _sum_${field}`);
     }
     for (const field of args._avg ?? []) {
-      selectParts.push(`AVG(${this.qc(field)}) as _avg_${field}`)
+      selectParts.push(`AVG(${this.qc(field)}) as _avg_${field}`);
     }
     for (const field of args._min ?? []) {
-      selectParts.push(`MIN(${this.qc(field)}) as _min_${field}`)
+      selectParts.push(`MIN(${this.qc(field)}) as _min_${field}`);
     }
     for (const field of args._max ?? []) {
-      selectParts.push(`MAX(${this.qc(field)}) as _max_${field}`)
+      selectParts.push(`MAX(${this.qc(field)}) as _max_${field}`);
     }
 
     if (selectParts.length === 0) {
-      selectParts.push('COUNT(*) as _count')
+      selectParts.push('COUNT(*) as _count');
     }
 
-    return selectParts
+    return selectParts;
   }
 
   async aggregate(args: AggregateArgs = {}): Promise<Record<string, any>> {
-    const params: any[] = []
-    let paramIndex = 1
-    const ph = () => this.driver.getPlaceholder(paramIndex++)
+    const params: any[] = [];
+    let paramIndex = 1;
+    const ph = () => this.driver.getPlaceholder(paramIndex++);
 
-    let sql = `SELECT ${this.selectAggregates(args).join(', ')} FROM ${this.qt(this.tableName)}`
+    let sql = `SELECT ${this.selectAggregates(args).join(', ')} FROM ${this.qt(this.tableName)}`;
 
     if (args.where) {
       const { sql: whereSql, params: whereParams } = buildWhere(
-        args.where, this.meta(), new Map(), ph, this.quote
-      )
+        args.where,
+        this.meta(),
+        new Map(),
+        ph,
+        this.quote,
+      );
       if (whereSql) {
-        sql += ` WHERE ${whereSql}`
-        params.push(...whereParams)
+        sql += ` WHERE ${whereSql}`;
+        params.push(...whereParams);
       }
     }
 
-    const result = await this.driver.query(sql, params)
-    return result.rows[0] ?? {}
+    const result = await this.driver.query(sql, params);
+    return result.rows[0] ?? {};
   }
 
   async count(where?: WhereInput): Promise<number> {
-    const row = await this.aggregate({ where, _count: true })
-    return Number(row._count ?? 0)
+    const row = await this.aggregate({ where, _count: true });
+    return Number(row._count ?? 0);
   }
 
   async groupBy(args: GroupByArgs): Promise<Record<string, any>[]> {
     if (!args.by || args.by.length === 0) {
-      throw new Error('groupBy requires a non-empty "by" array')
+      throw new Error('groupBy requires a non-empty "by" array');
     }
 
-    const params: any[] = []
-    let paramIndex = 1
-    const ph = () => this.driver.getPlaceholder(paramIndex++)
+    const params: any[] = [];
+    let paramIndex = 1;
+    const ph = () => this.driver.getPlaceholder(paramIndex++);
 
-    const selectParts = [...args.by.map((f) => this.qc(f)), ...this.selectAggregates(args)]
-    let sql = `SELECT ${selectParts.join(', ')} FROM ${this.qt(this.tableName)}`
+    const selectParts = [...args.by.map((f) => this.qc(f)), ...this.selectAggregates(args)];
+    let sql = `SELECT ${selectParts.join(', ')} FROM ${this.qt(this.tableName)}`;
 
     if (args.where) {
       const { sql: whereSql, params: whereParams } = buildWhere(
-        args.where, this.meta(), new Map(), ph, this.quote
-      )
+        args.where,
+        this.meta(),
+        new Map(),
+        ph,
+        this.quote,
+      );
       if (whereSql) {
-        sql += ` WHERE ${whereSql}`
-        params.push(...whereParams)
+        sql += ` WHERE ${whereSql}`;
+        params.push(...whereParams);
       }
     }
 
-    sql += ` GROUP BY ${args.by.map((f) => this.qc(f)).join(', ')}`
+    sql += ` GROUP BY ${args.by.map((f) => this.qc(f)).join(', ')}`;
 
     if (args.having) {
-      const havingParts: string[] = []
+      const havingParts: string[] = [];
       for (const [fn, targets] of Object.entries(args.having)) {
-        if (!targets) continue
-        const sqlFn = assertAggregateFn(fn)
+        if (!targets) continue;
+        const sqlFn = assertAggregateFn(fn);
         for (const [target, cond] of Object.entries(targets as Record<string, ScalarCondition>)) {
-          if (!cond) continue
-          const column = aggregateExpression(sqlFn, target, this.quote)
-          applyScalarCondition(havingParts, params, column, cond, ph)
+          if (!cond) continue;
+          const column = aggregateExpression(sqlFn, target, this.quote);
+          applyScalarCondition(havingParts, params, column, cond, ph);
         }
       }
       if (havingParts.length > 0) {
-        sql += ` HAVING ${havingParts.join(' AND ')}`
+        sql += ` HAVING ${havingParts.join(' AND ')}`;
       }
     }
 
     if (args.orderBy) {
       const orderParts = Object.entries(args.orderBy).map(
-        ([key, dir]) => `${this.qc(key)} ${assertSafeDirection(dir)}`
-      )
-      if (orderParts.length > 0) sql += ` ORDER BY ${orderParts.join(', ')}`
+        ([key, dir]) => `${this.qc(key)} ${assertSafeDirection(dir)}`,
+      );
+      if (orderParts.length > 0) sql += ` ORDER BY ${orderParts.join(', ')}`;
     }
 
-    assertSafeInteger(args.take, 'LIMIT')
-    assertSafeInteger(args.skip, 'OFFSET')
-    if (args.take !== undefined) sql += ` LIMIT ${args.take}`
-    if (args.skip !== undefined) sql += ` OFFSET ${args.skip}`
+    assertSafeInteger(args.take, 'LIMIT');
+    assertSafeInteger(args.skip, 'OFFSET');
+    if (args.take !== undefined) sql += ` LIMIT ${args.take}`;
+    if (args.skip !== undefined) sql += ` OFFSET ${args.skip}`;
 
-    const result = await this.driver.query(sql, params)
-    return result.rows
+    const result = await this.driver.query(sql, params);
+    return result.rows;
   }
 }

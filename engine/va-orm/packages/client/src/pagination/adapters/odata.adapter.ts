@@ -1,25 +1,25 @@
 // VA-ORM OData Pagination Adapter
 
-import type { OffsetResult, CursorResult, KeysetResult } from '../../core/types.js'
-import { isDangerousKey, safeJsonParse } from '../../core/security.js'
+import type { OffsetResult, CursorResult, KeysetResult } from '../../core/types.js';
+import { isDangerousKey, safeJsonParse } from '../../core/security.js';
 
 export interface ODataQueryParams {
-  $top?: number
-  $skip?: number
-  $orderby?: string
-  $filter?: string
-  $select?: string
-  $expand?: string
-  $count?: boolean
-  $cursor?: string
-  $skiptoken?: string
+  $top?: number;
+  $skip?: number;
+  $orderby?: string;
+  $filter?: string;
+  $select?: string;
+  $expand?: string;
+  $count?: boolean;
+  $cursor?: string;
+  $skiptoken?: string;
 }
 
 export interface ODataResponse<T> {
-  value: T[]
-  '@odata.count'?: number
-  '@odata.nextLink'?: string
-  '@odata.context'?: string
+  value: T[];
+  '@odata.count'?: number;
+  '@odata.nextLink'?: string;
+  '@odata.context'?: string;
 }
 
 export class ODataAdapter {
@@ -28,32 +28,33 @@ export class ODataAdapter {
   static fromOffset<T>(result: OffsetResult<T>, baseUrl: string): ODataResponse<T> {
     const response: ODataResponse<T> = {
       value: result.items,
-    }
+    };
 
     if (result.total !== undefined) {
-      response['@odata.count'] = result.total
+      response['@odata.count'] = result.total;
     }
 
     if (result.hasNext) {
-      response['@odata.nextLink'] = `${baseUrl}?$top=${result.limit}&$skip=${result.skip + result.limit}`
+      response['@odata.nextLink'] =
+        `${baseUrl}?$top=${result.limit}&$skip=${result.skip + result.limit}`;
     }
 
-    return response
+    return response;
   }
 
   static toOffsetOptions(params: ODataQueryParams): {
-    page: number
-    limit: number
-    skip: number
+    page: number;
+    limit: number;
+    skip: number;
   } {
-    const top = params.$top ?? 10
-    const skip = params.$skip ?? 0
+    const top = params.$top ?? 10;
+    const skip = params.$skip ?? 0;
 
     return {
       page: Math.floor(skip / top) + 1,
       limit: top,
       skip,
-    }
+    };
   }
 
   // ============ CURSOR PAGINATION ============
@@ -61,25 +62,25 @@ export class ODataAdapter {
   static fromCursor<T>(result: CursorResult<T>, baseUrl: string): ODataResponse<T> {
     const response: ODataResponse<T> = {
       value: result.items,
-    }
+    };
 
     if (result.hasMore && result.nextCursor) {
-      response['@odata.nextLink'] = `${baseUrl}?$cursor=${result.nextCursor}`
+      response['@odata.nextLink'] = `${baseUrl}?$cursor=${result.nextCursor}`;
     }
 
-    return response
+    return response;
   }
 
   static toCursorOptions(params: ODataQueryParams): {
-    cursor?: string
-    limit: number
-    direction: 'forward' | 'backward'
+    cursor?: string;
+    limit: number;
+    direction: 'forward' | 'backward';
   } {
     return {
       cursor: params.$cursor,
       limit: params.$top ?? 10,
       direction: 'forward',
-    }
+    };
   }
 
   // ============ KEYSET PAGINATION ============
@@ -87,57 +88,57 @@ export class ODataAdapter {
   static fromKeyset<T>(result: KeysetResult<T>, baseUrl: string): ODataResponse<T> {
     const response: ODataResponse<T> = {
       value: result.items,
-    }
+    };
 
     if (result.hasMore && result.nextAfter) {
-      response['@odata.nextLink'] = `${baseUrl}?$skiptoken=${JSON.stringify(result.nextAfter)}`
+      response['@odata.nextLink'] = `${baseUrl}?$skiptoken=${JSON.stringify(result.nextAfter)}`;
     }
 
-    return response
+    return response;
   }
 
   static toKeysetOptions(params: ODataQueryParams): {
-    after?: Record<string, any>
-    limit: number
-    direction: 'forward' | 'backward'
+    after?: Record<string, any>;
+    limit: number;
+    direction: 'forward' | 'backward';
   } {
-    let after: Record<string, any> | undefined
+    let after: Record<string, any> | undefined;
     if (params.$skiptoken) {
-      after = safeJsonParse<Record<string, any>>(params.$skiptoken)
+      after = safeJsonParse<Record<string, any>>(params.$skiptoken);
     }
 
     return {
       after,
       limit: params.$top ?? 10,
       direction: 'forward',
-    }
+    };
   }
 
   // ============ FILTER PARSING ============
 
   static parseFilter(filter: string): Record<string, any> {
-    const conditions: Record<string, any> = Object.create(null)
-    const eqRegex = /(\w+)\s+eq\s+(?:'([^']*)'|(\d+))/g
-    let match
+    const conditions: Record<string, any> = Object.create(null);
+    const eqRegex = /(\w+)\s+eq\s+(?:'([^']*)'|(\d+))/g;
+    let match;
 
     while ((match = eqRegex.exec(filter)) !== null) {
-      const [, field, stringValue, numericValue] = match
-      if (isDangerousKey(field)) continue
-      conditions[field] = numericValue ? Number(numericValue) : stringValue
+      const [, field, stringValue, numericValue] = match;
+      if (isDangerousKey(field)) continue;
+      conditions[field] = numericValue ? Number(numericValue) : stringValue;
     }
 
-    return conditions
+    return conditions;
   }
 
   // ============ ORDERBY PARSING ============
 
   static parseOrderBy(orderby: string): Array<{ column: string; direction: 'asc' | 'desc' }> {
-    return orderby.split(',').map(part => {
-      const [column, direction] = part.trim().split(' ')
+    return orderby.split(',').map((part) => {
+      const [column, direction] = part.trim().split(' ');
       return {
         column,
         direction: (direction?.toLowerCase() as 'asc' | 'desc') ?? 'asc',
-      }
-    })
+      };
+    });
   }
 }

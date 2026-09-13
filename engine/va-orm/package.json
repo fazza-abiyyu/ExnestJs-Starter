@@ -1,7 +1,7 @@
 {
   "name": "@v-va/orm",
   "version": "0.1.0-beta.3",
-  "description": "VA-ORM \u2014 lightweight, production-grade TypeScript ORM (PostgreSQL, MySQL, SQLite). Schema-first, zero heavy engine.",
+  "description": "VA-ORM — lightweight, production-grade TypeScript ORM (PostgreSQL, MySQL, SQLite). Schema-first, zero heavy engine.",
   "type": "module",
   "main": "./packages/client/dist/index.js",
   "module": "./packages/client/dist/index.js",
@@ -41,6 +41,8 @@
     "build": "tsup",
     "test": "bun test",
     "typecheck": "tsc --noEmit -p tsconfig.json",
+    "format": "prettier --write \"packages/*/src/**/*.ts\" \"packages/cli/bin/*.ts\" \"*.json\" \"*.ts\"",
+    "format:check": "prettier --check \"packages/*/src/**/*.ts\" \"packages/cli/bin/*.ts\" \"*.json\" \"*.ts\"",
     "prepublishOnly": "bun run build",
     "security:audit": "bun scripts/security-audit.ts",
     "security:audit:strict": "bun scripts/security-audit.ts --strict"
@@ -88,6 +90,7 @@
   "devDependencies": {
     "@types/node": "^22.0.0",
     "bun-types": "^1.2.0",
+    "prettier": "^3.9.6",
     "tsup": "^8.0.0",
     "typescript": "^5.5.0"
   }

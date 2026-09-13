@@ -3,14 +3,14 @@
 // injected by tsup (a source shebang would land on line 2 and break Node).
 // Usage: va <command> [options]
 
-import { validateCommand } from '../src/commands/validate.command.js'
-import { generateCommand } from '../src/commands/generate.command.js'
-import { migrateCommand } from '../src/commands/migrate.command.js'
-import { pushCommand } from '../src/commands/push.command.js'
-import { pullCommand } from '../src/commands/pull.command.js'
+import { validateCommand } from '../src/commands/validate.command.js';
+import { generateCommand } from '../src/commands/generate.command.js';
+import { migrateCommand } from '../src/commands/migrate.command.js';
+import { pushCommand } from '../src/commands/push.command.js';
+import { pullCommand } from '../src/commands/pull.command.js';
 
-const args = process.argv.slice(2)
-const command = args[0]
+const args = process.argv.slice(2);
+const command = args[0];
 
 function showHelp() {
   console.log(`
@@ -57,84 +57,92 @@ function showHelp() {
     va db push
     va db push --dry-run               Show ALTERs without executing
     va db pull --output ./va.pulled.schema
-  `)
+  `);
 }
 
 async function main() {
   if (!command || command === '--help' || command === '-h') {
-    showHelp()
-    return
+    showHelp();
+    return;
   }
 
   switch (command) {
     case 'validate': {
-      const schema = getArg('--schema')
-      await validateCommand({ schema })
-      break
+      const schema = getArg('--schema');
+      await validateCommand({ schema });
+      break;
     }
 
     case 'generate': {
-      const schema = getArg('--schema')
-      const output = getArg('--output')
-      const sql = hasFlag('--sql')
-      await generateCommand({ schema, output, sql })
-      break
+      const schema = getArg('--schema');
+      const output = getArg('--output');
+      const sql = hasFlag('--sql');
+      await generateCommand({ schema, output, sql });
+      break;
     }
 
     case 'migrate': {
-      const subcommand = args[1]
-      if (!subcommand || !['up', 'down', 'status', 'reset', 'create', 'dev', 'resolve'].includes(subcommand)) {
-        console.error('\x1b[31mError: migrate requires a subcommand (up, down, status, reset, create, dev, resolve)\x1b[0m')
-        showHelp()
-        process.exit(1)
+      const subcommand = args[1];
+      if (
+        !subcommand ||
+        !['up', 'down', 'status', 'reset', 'create', 'dev', 'resolve'].includes(subcommand)
+      ) {
+        console.error(
+          '\x1b[31mError: migrate requires a subcommand (up, down, status, reset, create, dev, resolve)\x1b[0m',
+        );
+        showHelp();
+        process.exit(1);
       }
 
-      const steps = getArg('--steps') ? parseInt(getArg('--steps')!) : undefined
-      const name = ['create', 'dev', 'resolve'].includes(subcommand) ? args[2] : undefined
-      const to = getArg('--to') as 'applied' | 'rolled-back' | undefined
+      const steps = getArg('--steps') ? parseInt(getArg('--steps')!) : undefined;
+      const name = ['create', 'dev', 'resolve'].includes(subcommand) ? args[2] : undefined;
+      const to = getArg('--to') as 'applied' | 'rolled-back' | undefined;
 
       await migrateCommand({
         command: subcommand as 'up' | 'down' | 'status' | 'reset' | 'create' | 'dev' | 'resolve',
         steps,
         name,
         to,
-      })
-      break
+      });
+      break;
     }
 
     case 'db': {
-      const subcommand = args[1]
+      const subcommand = args[1];
       if (subcommand === 'push') {
-        await pushCommand({ schema: getArg('--schema'), dryRun: hasFlag('--dry-run') })
+        await pushCommand({ schema: getArg('--schema'), dryRun: hasFlag('--dry-run') });
       } else if (subcommand === 'pull') {
-        const schemas = getArg('--schemas')?.split(',').map((s) => s.trim()).filter(Boolean)
-        await pullCommand({ output: getArg('--output'), schemas })
+        const schemas = getArg('--schemas')
+          ?.split(',')
+          .map((s) => s.trim())
+          .filter(Boolean);
+        await pullCommand({ output: getArg('--output'), schemas });
       } else {
-        console.error('\x1b[31mError: db requires a subcommand (push, pull)\x1b[0m')
-        showHelp()
-        process.exit(1)
+        console.error('\x1b[31mError: db requires a subcommand (push, pull)\x1b[0m');
+        showHelp();
+        process.exit(1);
       }
-      break
+      break;
     }
 
     default:
-      console.error(`\x1b[31mUnknown command: ${command}\x1b[0m`)
-      showHelp()
-      process.exit(1)
+      console.error(`\x1b[31mUnknown command: ${command}\x1b[0m`);
+      showHelp();
+      process.exit(1);
   }
 }
 
 function getArg(flag: string): string | undefined {
-  const index = args.indexOf(flag)
-  if (index === -1) return undefined
-  return args[index + 1]
+  const index = args.indexOf(flag);
+  if (index === -1) return undefined;
+  return args[index + 1];
 }
 
 function hasFlag(flag: string): boolean {
-  return args.includes(flag)
+  return args.includes(flag);
 }
 
 main().catch((error) => {
-  console.error('\x1b[31mError:\x1b[0m', error)
-  process.exit(1)
-})
+  console.error('\x1b[31mError:\x1b[0m', error);
+  process.exit(1);
+});

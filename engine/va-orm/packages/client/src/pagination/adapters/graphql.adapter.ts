@@ -1,30 +1,30 @@
 // VA-ORM GraphQL Pagination Adapter
 
-import type { OffsetResult, CursorResult, KeysetResult } from '../../core/types.js'
-import { safeJsonParse } from '../../core/security.js'
+import type { OffsetResult, CursorResult, KeysetResult } from '../../core/types.js';
+import { safeJsonParse } from '../../core/security.js';
 
 export interface GraphQLPageInfo {
-  hasNextPage: boolean
-  hasPreviousPage: boolean
-  startCursor?: string
-  endCursor?: string
+  hasNextPage: boolean;
+  hasPreviousPage: boolean;
+  startCursor?: string;
+  endCursor?: string;
 }
 
 export interface GraphQLConnection<T> {
   edges: Array<{
-    node: T
-    cursor: string
-  }>
-  pageInfo: GraphQLPageInfo
-  totalCount?: number
+    node: T;
+    cursor: string;
+  }>;
+  pageInfo: GraphQLPageInfo;
+  totalCount?: number;
 }
 
 export interface GraphQLQueryArgs {
-  first?: number
-  last?: number
-  after?: string
-  before?: string
-  offset?: number
+  first?: number;
+  last?: number;
+  after?: string;
+  before?: string;
+  offset?: number;
 }
 
 export class GraphQLAdapter {
@@ -32,12 +32,12 @@ export class GraphQLAdapter {
 
   static fromOffset<T extends Record<string, any>>(
     result: OffsetResult<T>,
-    cursorField: string = 'id'
+    cursorField: string = 'id',
   ): GraphQLConnection<T> {
     const edges = result.items.map((item, index) => ({
       node: item,
       cursor: Buffer.from(`${result.skip + index}`).toString('base64'),
-    }))
+    }));
 
     return {
       edges,
@@ -48,34 +48,34 @@ export class GraphQLAdapter {
         endCursor: edges[edges.length - 1]?.cursor,
       },
       totalCount: result.total,
-    }
+    };
   }
 
   static toOffsetOptions(args: GraphQLQueryArgs): {
-    page: number
-    limit: number
-    skip: number
+    page: number;
+    limit: number;
+    skip: number;
   } {
-    const limit = args.first ?? args.last ?? 10
-    const skip = args.offset ?? 0
+    const limit = args.first ?? args.last ?? 10;
+    const skip = args.offset ?? 0;
 
     return {
       page: Math.floor(skip / limit) + 1,
       limit,
       skip,
-    }
+    };
   }
 
   // ============ CURSOR PAGINATION ============
 
   static fromCursor<T extends Record<string, any>>(
     result: CursorResult<T>,
-    cursorField: string = 'id'
+    cursorField: string = 'id',
   ): GraphQLConnection<T> {
-    const edges = result.items.map(item => ({
+    const edges = result.items.map((item) => ({
       node: item,
       cursor: Buffer.from(String(item[cursorField])).toString('base64'),
-    }))
+    }));
 
     return {
       edges,
@@ -85,42 +85,42 @@ export class GraphQLAdapter {
         startCursor: edges[0]?.cursor,
         endCursor: edges[edges.length - 1]?.cursor,
       },
-    }
+    };
   }
 
   static toCursorOptions(args: GraphQLQueryArgs): {
-    cursor?: string
-    limit: number
-    direction: 'forward' | 'backward'
+    cursor?: string;
+    limit: number;
+    direction: 'forward' | 'backward';
   } {
-    let cursor: string | undefined
+    let cursor: string | undefined;
     if (args.after) {
-      const decoded = Buffer.from(args.after, 'base64').toString('utf-8')
-      const parsed = safeJsonParse<unknown>(decoded)
-      cursor = typeof parsed === 'string' ? parsed : decoded
+      const decoded = Buffer.from(args.after, 'base64').toString('utf-8');
+      const parsed = safeJsonParse<unknown>(decoded);
+      cursor = typeof parsed === 'string' ? parsed : decoded;
     } else if (args.before) {
-      const decoded = Buffer.from(args.before, 'base64').toString('utf-8')
-      const parsed = safeJsonParse<unknown>(decoded)
-      cursor = typeof parsed === 'string' ? parsed : decoded
+      const decoded = Buffer.from(args.before, 'base64').toString('utf-8');
+      const parsed = safeJsonParse<unknown>(decoded);
+      cursor = typeof parsed === 'string' ? parsed : decoded;
     }
 
     return {
       cursor,
       limit: args.first ?? args.last ?? 10,
       direction: args.first ? 'forward' : 'backward',
-    }
+    };
   }
 
   // ============ KEYSET PAGINATION ============
 
   static fromKeyset<T extends Record<string, any>>(
     result: KeysetResult<T>,
-    cursorField: string = 'id'
+    cursorField: string = 'id',
   ): GraphQLConnection<T> {
-    const edges = result.items.map(item => ({
+    const edges = result.items.map((item) => ({
       node: item,
       cursor: Buffer.from(JSON.stringify({ [cursorField]: item[cursorField] })).toString('base64'),
-    }))
+    }));
 
     return {
       edges,
@@ -130,35 +130,35 @@ export class GraphQLAdapter {
         startCursor: edges[0]?.cursor,
         endCursor: edges[edges.length - 1]?.cursor,
       },
-    }
+    };
   }
 
   static toKeysetOptions(args: GraphQLQueryArgs): {
-    after?: Record<string, any>
-    limit: number
-    direction: 'forward' | 'backward'
+    after?: Record<string, any>;
+    limit: number;
+    direction: 'forward' | 'backward';
   } {
-    let after: Record<string, any> | undefined
+    let after: Record<string, any> | undefined;
     if (args.after) {
       after = safeJsonParse<Record<string, any>>(
         Buffer.from(args.after, 'base64').toString('utf-8'),
-      )
+      );
     }
 
     return {
       after,
       limit: args.first ?? args.last ?? 10,
       direction: args.first ? 'forward' : 'backward',
-    }
+    };
   }
 
   // ============ CURSOR ENCODING ============
 
   static encodeCursor(data: any): string {
-    return Buffer.from(JSON.stringify(data)).toString('base64')
+    return Buffer.from(JSON.stringify(data)).toString('base64');
   }
 
   static decodeCursor(cursor: string): any {
-    return safeJsonParse(Buffer.from(cursor, 'base64').toString('utf-8')) ?? null
+    return safeJsonParse(Buffer.from(cursor, 'base64').toString('utf-8')) ?? null;
   }
 }

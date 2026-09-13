@@ -5,57 +5,57 @@
 // Rows are stripped to wanted columns + relation keys afterwards, so output
 // matches the requested select even when the driver returns extra columns.
 
-import type { IncludeMap, ModelMeta, SelectArg } from '../core/types.js'
+import type { IncludeMap, ModelMeta, SelectArg } from '../core/types.js';
 
 export interface ResolvedSelect {
-  columns: string[] | null
-  keep: string[] | null
+  columns: string[] | null;
+  keep: string[] | null;
 }
 
 export function normalizeSelect(select: SelectArg): string[] {
-  if (Array.isArray(select)) return [...select]
+  if (Array.isArray(select)) return [...select];
   return Object.entries(select)
     .filter(([, enabled]) => enabled)
-    .map(([field]) => field)
+    .map(([field]) => field);
 }
 
 export function resolveSelect(
   model: ModelMeta,
   select?: SelectArg,
-  include?: IncludeMap
+  include?: IncludeMap,
 ): ResolvedSelect {
-  if (select === undefined) return { columns: null, keep: null }
+  if (select === undefined) return { columns: null, keep: null };
 
-  const wanted = normalizeSelect(select)
-  if (wanted.length === 0) return { columns: null, keep: null }
+  const wanted = normalizeSelect(select);
+  if (wanted.length === 0) return { columns: null, keep: null };
 
-  const required = new Set<string>([model.primaryKey])
-  const includeKeys: string[] = []
+  const required = new Set<string>([model.primaryKey]);
+  const includeKeys: string[] = [];
   if (include) {
     for (const field of Object.keys(include)) {
-      includeKeys.push(field)
-      const meta = model.relations.get(field)
+      includeKeys.push(field);
+      const meta = model.relations.get(field);
       if (meta && !meta.isList && meta.isFkHolder) {
-        for (const fk of meta.fkFields) required.add(fk)
+        for (const fk of meta.fkFields) required.add(fk);
       }
     }
   }
 
-  const columns = [...wanted]
+  const columns = [...wanted];
   for (const col of required) {
-    if (!columns.includes(col)) columns.push(col)
+    if (!columns.includes(col)) columns.push(col);
   }
 
-  return { columns, keep: [...new Set([...wanted, ...includeKeys])] }
+  return { columns, keep: [...new Set([...wanted, ...includeKeys])] };
 }
 
 export function stripColumns<T extends Record<string, any>>(rows: T[], keep: string[] | null): T[] {
-  if (keep === null) return rows
-  const keepSet = new Set(keep)
+  if (keep === null) return rows;
+  const keepSet = new Set(keep);
   for (const row of rows) {
     for (const key of Object.keys(row)) {
-      if (!keepSet.has(key)) delete row[key]
+      if (!keepSet.has(key)) delete row[key];
     }
   }
-  return rows
+  return rows;
 }

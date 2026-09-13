@@ -1,74 +1,74 @@
 // VA-ORM Seed Command
 
-import * as fs from 'fs'
-import * as path from 'path'
-import type { VaClient } from '../../../client/src/core/va.client.js'
+import * as fs from 'fs';
+import * as path from 'path';
+import type { VaClient } from '../../../client/src/core/va.client.js';
 
 export interface SeedOptions {
-  force?: boolean
-  seedFile?: string
+  force?: boolean;
+  seedFile?: string;
 }
 
 export interface SeedResult {
-  success: boolean
-  message: string
-  duration: number
+  success: boolean;
+  message: string;
+  duration: number;
 }
 
 export class SeedCommand {
-  private client: VaClient
-  private projectRoot: string
+  private client: VaClient;
+  private projectRoot: string;
 
   constructor(client: VaClient, projectRoot: string) {
-    this.client = client
-    this.projectRoot = projectRoot
+    this.client = client;
+    this.projectRoot = projectRoot;
   }
 
   async seed(options: SeedOptions = {}): Promise<SeedResult> {
-    const startTime = Date.now()
-    const seedFile = this.findSeedFile(options.seedFile)
+    const startTime = Date.now();
+    const seedFile = this.findSeedFile(options.seedFile);
 
     if (!seedFile) {
       return {
         success: false,
         message: 'No seed file found. Create a seed.ts or seed.js file in your project root.',
         duration: Date.now() - startTime,
-      }
+      };
     }
 
     try {
-      const seedModule = await import(seedFile)
-      const seedFn = seedModule.default || seedModule.seed
+      const seedModule = await import(seedFile);
+      const seedFn = seedModule.default || seedModule.seed;
 
       if (typeof seedFn !== 'function') {
         return {
           success: false,
           message: 'Seed file must export a default function or a named "seed" function.',
           duration: Date.now() - startTime,
-        }
+        };
       }
 
-      await seedFn(this.client)
+      await seedFn(this.client);
 
       return {
         success: true,
         message: `Seed completed successfully using ${path.basename(seedFile)}`,
         duration: Date.now() - startTime,
-      }
+      };
     } catch (error: any) {
       return {
         success: false,
         message: `Seed failed: ${error.message}`,
         duration: Date.now() - startTime,
-      }
+      };
     }
   }
 
   private findSeedFile(customPath?: string): string | null {
     if (customPath) {
-      const fullPath = path.resolve(this.projectRoot, customPath)
-      if (!this.isWithinProject(fullPath)) return null
-      return fs.existsSync(fullPath) ? fullPath : null
+      const fullPath = path.resolve(this.projectRoot, customPath);
+      if (!this.isWithinProject(fullPath)) return null;
+      return fs.existsSync(fullPath) ? fullPath : null;
     }
 
     const candidates = [
@@ -80,42 +80,44 @@ export class SeedCommand {
       'src/seed.js',
       'seeds/seed.ts',
       'seeds/seed.js',
-    ]
+    ];
 
     for (const candidate of candidates) {
-      const fullPath = path.join(this.projectRoot, candidate)
+      const fullPath = path.join(this.projectRoot, candidate);
       if (fs.existsSync(fullPath)) {
-        return fullPath
+        return fullPath;
       }
     }
 
-    return null
+    return null;
   }
 
   /** Reject absolute/relative paths that escape projectRoot (CWE-22). */
   private isWithinProject(fullPath: string): boolean {
-    const root = path.resolve(this.projectRoot)
-    const resolved = path.resolve(fullPath)
-    const rel = path.relative(root, resolved)
-    return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel))
+    const root = path.resolve(this.projectRoot);
+    const resolved = path.resolve(fullPath);
+    const rel = path.relative(root, resolved);
+    return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
   }
 
   async reset(): Promise<SeedResult> {
-    const startTime = Date.now()
+    const startTime = Date.now();
 
     try {
       // Run seed with --force flag
-      const result = await this.seed({ force: true })
+      const result = await this.seed({ force: true });
       return {
         ...result,
-        message: result.success ? `Database reset and re-seeded in ${result.duration}ms` : result.message,
-      }
+        message: result.success
+          ? `Database reset and re-seeded in ${result.duration}ms`
+          : result.message,
+      };
     } catch (error: any) {
       return {
         success: false,
         message: `Reset failed: ${error.message}`,
         duration: Date.now() - startTime,
-      }
+      };
     }
   }
 }

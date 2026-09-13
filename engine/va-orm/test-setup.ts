@@ -1,60 +1,60 @@
 // VA-ORM Test Setup
 
-import { beforeAll, afterAll } from 'bun:test'
-import { ConnectionPool } from './packages/client/src/core/connection.pool.js'
-import type { DatabaseDriver, QueryResult } from './packages/client/src/core/types.js'
+import { beforeAll, afterAll } from 'bun:test';
+import { ConnectionPool } from './packages/client/src/core/connection.pool.js';
+import type { DatabaseDriver, QueryResult } from './packages/client/src/core/types.js';
 
 // Mock database driver for unit tests
 export class MockDriver implements DatabaseDriver {
-  private queries: Array<{ sql: string; params?: any[] }> = []
-  private results: any[] = []
+  private queries: Array<{ sql: string; params?: any[] }> = [];
+  private results: any[] = [];
 
   setResult(result: any) {
-    this.results.push(result)
+    this.results.push(result);
   }
 
   clearResults() {
-    this.results = []
+    this.results = [];
   }
 
   getQueries() {
-    return this.queries
+    return this.queries;
   }
 
   clearQueries() {
-    this.queries = []
+    this.queries = [];
   }
 
   async query<T = any>(sql: string, params?: any[]): Promise<QueryResult<T>> {
-    this.queries.push({ sql, params })
-    const result = this.results.shift() || { rows: [], rowCount: 0 }
-    return result
+    this.queries.push({ sql, params });
+    const result = this.results.shift() || { rows: [], rowCount: 0 };
+    return result;
   }
 
   async execute(sql: string, params?: any[]): Promise<{ rowCount: number }> {
-    this.queries.push({ sql, params })
-    const result = this.results.shift() || { rowCount: 0 }
-    return result
+    this.queries.push({ sql, params });
+    const result = this.results.shift() || { rowCount: 0 };
+    return result;
   }
 
   async transaction<T>(fn: (driver: DatabaseDriver) => Promise<T>): Promise<T> {
-    return fn(this)
+    return fn(this);
   }
 
   async close(): Promise<void> {}
 
   getPlaceholder(index: number): string {
-    return `$${index}`
+    return `$${index}`;
   }
 
   getDialect(): 'postgres' {
-    return 'postgres'
+    return 'postgres';
   }
 }
 
-ConnectionPool.registerFactory('sqlite', () => new MockDriver())
-ConnectionPool.registerFactory('postgres', () => new MockDriver())
-ConnectionPool.registerFactory('mysql', () => new MockDriver())
+ConnectionPool.registerFactory('sqlite', () => new MockDriver());
+ConnectionPool.registerFactory('postgres', () => new MockDriver());
+ConnectionPool.registerFactory('mysql', () => new MockDriver());
 
 // Test data
 export const testUser = {
@@ -62,7 +62,7 @@ export const testUser = {
   name: 'John Doe',
   email: 'john@example.com',
   createdAt: new Date('2024-01-01'),
-}
+};
 
 export const testUsers = [
   testUser,
@@ -78,4 +78,4 @@ export const testUsers = [
     email: 'bob@example.com',
     createdAt: new Date('2024-01-03'),
   },
-]
+];

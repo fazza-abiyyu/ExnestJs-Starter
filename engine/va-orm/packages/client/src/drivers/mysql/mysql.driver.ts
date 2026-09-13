@@ -1,44 +1,44 @@
 // VA-ORM MySQL Driver
 
-import { createRequire } from 'module'
-import type { DatabaseDriver, QueryResult } from '../../core/types.js'
-import { VaError } from '../../core/errors.js'
+import { createRequire } from 'module';
+import type { DatabaseDriver, QueryResult } from '../../core/types.js';
+import { VaError } from '../../core/errors.js';
 
-const require = createRequire(import.meta.url)
+const require = createRequire(import.meta.url);
 
 interface MySqlPool {
-  query(sql: string, values?: any[]): Promise<any>
-  getConnection(): Promise<MySqlConnection>
-  end(): Promise<void>
+  query(sql: string, values?: any[]): Promise<any>;
+  getConnection(): Promise<MySqlConnection>;
+  end(): Promise<void>;
 }
 
 interface MySqlConnection {
-  query(sql: string, values?: any[]): Promise<any>
-  beginTransaction(): Promise<void>
-  commit(): Promise<void>
-  rollback(): Promise<void>
-  release(): void
+  query(sql: string, values?: any[]): Promise<any>;
+  beginTransaction(): Promise<void>;
+  commit(): Promise<void>;
+  rollback(): Promise<void>;
+  release(): void;
 }
 
 export class MysqlDriver implements DatabaseDriver {
-  private pool: MySqlPool
+  private pool: MySqlPool;
 
   constructor(
     private connectionString: string,
     private options: {
-      max?: number
-      min?: number
-      idleTimeoutMs?: number
-      connectionTimeoutMs?: number
-      ssl?: boolean | { rejectUnauthorized?: boolean }
-    } = {}
+      max?: number;
+      min?: number;
+      idleTimeoutMs?: number;
+      connectionTimeoutMs?: number;
+      ssl?: boolean | { rejectUnauthorized?: boolean };
+    } = {},
   ) {
-    this.pool = this.createPool()
+    this.pool = this.createPool();
   }
 
   private createPool(): MySqlPool {
-    const mysql = require('mysql2/promise')
-    const url = new URL(this.connectionString)
+    const mysql = require('mysql2/promise');
+    const url = new URL(this.connectionString);
     return mysql.createPool({
       host: url.hostname,
       port: parseInt(url.port || '3306'),
@@ -49,95 +49,95 @@ export class MysqlDriver implements DatabaseDriver {
       idleTimeout: this.options.idleTimeoutMs ?? 10000,
       connectTimeout: this.options.connectionTimeoutMs ?? 5000,
       ssl: this.options.ssl || undefined,
-    })
+    });
   }
 
   async query<T = any>(sql: string, params?: any[]): Promise<QueryResult<T>> {
     try {
-      const [rows] = await this.pool.query(sql, params)
+      const [rows] = await this.pool.query(sql, params);
       return {
         rows: (Array.isArray(rows) ? rows : []) as T[],
-        rowCount: (Array.isArray(rows) ? rows.length : 0),
-      }
+        rowCount: Array.isArray(rows) ? rows.length : 0,
+      };
     } catch (error) {
-      throw VaError.wrap(error, 'mysql query')
+      throw VaError.wrap(error, 'mysql query');
     }
   }
 
   async execute(sql: string, params?: any[]): Promise<{ rowCount: number }> {
     try {
-      const [result] = await this.pool.query(sql, params)
-      return { rowCount: (result as any).affectedRows ?? 0 }
+      const [result] = await this.pool.query(sql, params);
+      return { rowCount: (result as any).affectedRows ?? 0 };
     } catch (error) {
-      throw VaError.wrap(error, 'mysql execute')
+      throw VaError.wrap(error, 'mysql execute');
     }
   }
 
   async transaction<T>(fn: (driver: DatabaseDriver) => Promise<T>): Promise<T> {
-    const connection = await this.pool.getConnection()
-    let txDepth = 0
+    const connection = await this.pool.getConnection();
+    let txDepth = 0;
     const txDriver: DatabaseDriver = {
       query: async <R = any>(sql: string, params?: any[]) => {
-        const [rows] = await connection.query(sql, params)
+        const [rows] = await connection.query(sql, params);
         return {
           rows: (Array.isArray(rows) ? rows : []) as R[],
-          rowCount: (Array.isArray(rows) ? rows.length : 0),
-        }
+          rowCount: Array.isArray(rows) ? rows.length : 0,
+        };
       },
       execute: async (sql: string, params?: any[]) => {
-        const [result] = await connection.query(sql, params)
-        return { rowCount: (result as any).affectedRows ?? 0 }
+        const [result] = await connection.query(sql, params);
+        return { rowCount: (result as any).affectedRows ?? 0 };
       },
       transaction: async <R>(nested: (driver: DatabaseDriver) => Promise<R>) => {
-        const depth = txDepth
-        const savepoint = depth === 0 ? null : `va_sp_${depth}`
-        txDepth = depth + 1
+        const depth = txDepth;
+        const savepoint = depth === 0 ? null : `va_sp_${depth}`;
+        txDepth = depth + 1;
         try {
-          if (savepoint) await connection.query(`SAVEPOINT ${savepoint}`)
-          const result = await nested(txDriver)
-          if (savepoint) await connection.query(`RELEASE SAVEPOINT ${savepoint}`)
-          return result
+          if (savepoint) await connection.query(`SAVEPOINT ${savepoint}`);
+          const result = await nested(txDriver);
+          if (savepoint) await connection.query(`RELEASE SAVEPOINT ${savepoint}`);
+          return result;
         } catch (error) {
           try {
-            if (savepoint) await connection.query(`ROLLBACK TO SAVEPOINT ${savepoint}`)
+            if (savepoint) await connection.query(`ROLLBACK TO SAVEPOINT ${savepoint}`);
           } catch {
             // ignore
           }
-          throw VaError.wrap(error, 'mysql nested transaction')
+          throw VaError.wrap(error, 'mysql nested transaction');
         } finally {
-          txDepth = depth
+          txDepth = depth;
         }
       },
       close: async () => {},
       getPlaceholder: (_index: number) => '?',
       getDialect: () => 'mysql' as const,
-    }
+    };
     try {
-      await connection.beginTransaction()
-      const result = await fn(txDriver)
-      await connection.commit()
-      return result
+      await connection.beginTransaction();
+      const result = await fn(txDriver);
+      await connection.commit();
+      return result;
     } catch (error) {
       try {
-        await connection.rollback()
+        await connection.rollback();
       } catch {
         // ignore
       }
-      throw VaError.wrap(error, 'mysql transaction')
+      throw VaError.wrap(error, 'mysql transaction');
     } finally {
-      connection.release()
+      connection.release();
     }
   }
 
   async close(): Promise<void> {
-    await this.pool.end()
+    await this.pool.end();
   }
 
   getDialect(): 'mysql' {
-    return 'mysql'
+    return 'mysql';
   }
 
   getPlaceholder(_index: number): string {
-    return '?'
+    return '?';
   }
 }

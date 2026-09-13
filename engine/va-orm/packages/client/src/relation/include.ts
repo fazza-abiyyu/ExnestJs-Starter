@@ -12,26 +12,26 @@ import type {
   SelectArg,
   SortDirection,
   WhereInput,
-} from '../core/types.js'
-import { buildWhere } from './filters.js'
-import { resolveSelect, stripColumns } from './select.js'
-import { quoteColumn, quoteTable } from './quote.js'
-import type { QuoteFn } from './quote.js'
-import { assertSafeDirection, assertSafeInteger } from '../core/expression.js'
+} from '../core/types.js';
+import { buildWhere } from './filters.js';
+import { resolveSelect, stripColumns } from './select.js';
+import { quoteColumn, quoteTable } from './quote.js';
+import type { QuoteFn } from './quote.js';
+import { assertSafeDirection, assertSafeInteger } from '../core/expression.js';
 
 interface ResolvedInclude {
-  meta: RelationMeta
-  child: ModelMeta
-  where?: WhereInput
-  orderBy?: Record<string, SortDirection>
-  take?: number
-  skip?: number
-  select?: SelectArg
-  include?: IncludeMap
+  meta: RelationMeta;
+  child: ModelMeta;
+  where?: WhereInput;
+  orderBy?: Record<string, SortDirection>;
+  take?: number;
+  skip?: number;
+  select?: SelectArg;
+  include?: IncludeMap;
 }
 
 function resolveIncludeArg(arg: IncludeArg): Omit<ResolvedInclude, 'meta' | 'child'> {
-  if (typeof arg === 'boolean') return {}
+  if (typeof arg === 'boolean') return {};
   return {
     where: arg.where,
     orderBy: arg.orderBy,
@@ -39,263 +39,274 @@ function resolveIncludeArg(arg: IncludeArg): Omit<ResolvedInclude, 'meta' | 'chi
     skip: arg.skip,
     select: arg.select,
     include: arg.include,
-  }
+  };
 }
 
 export class IncludeLoader {
-  private quote: QuoteFn
+  private quote: QuoteFn;
 
   constructor(
     private driver: DatabaseDriver,
     private registry: Map<string, ModelMeta>,
-    quote?: QuoteFn
+    quote?: QuoteFn,
   ) {
     // Driver-derived quoting (lowercase-folded columns) unless the caller
     // passes an explicit quoter (e.g. ModelDelegate with its own).
-    this.quote = quote ?? ((name: string) => quoteColumn(this.driver, name))
+    this.quote = quote ?? ((name: string) => quoteColumn(this.driver, name));
   }
 
   private qc(name: string): string {
-    return quoteColumn(this.driver, name)
+    return quoteColumn(this.driver, name);
   }
 
   private qt(name: string): string {
-    return quoteTable(this.driver, name)
+    return quoteTable(this.driver, name);
   }
 
   async load<T extends Record<string, any>>(
     parents: T[],
     model: ModelMeta,
-    include: IncludeMap
+    include: IncludeMap,
   ): Promise<T[]> {
-    if (parents.length === 0) return parents
+    if (parents.length === 0) return parents;
 
     for (const [field, arg] of Object.entries(include)) {
-      if (arg === false) continue
-      const meta = model.relations.get(field)
+      if (arg === false) continue;
+      const meta = model.relations.get(field);
       if (!meta) {
-        throw new Error(`Relation "${field}" is not defined on model "${model.name}"`)
+        throw new Error(`Relation "${field}" is not defined on model "${model.name}"`);
       }
-      const child = this.registry.get(meta.targetModel)
+      const child = this.registry.get(meta.targetModel);
       if (!child) {
-        throw new Error(`Relation target model "${meta.targetModel}" is not registered`)
+        throw new Error(`Relation target model "${meta.targetModel}" is not registered`);
       }
-      const resolved: ResolvedInclude = { meta, child, ...resolveIncludeArg(arg) }
+      const resolved: ResolvedInclude = { meta, child, ...resolveIncludeArg(arg) };
 
       if (meta.kind === 'many-to-many-implicit') {
-        await this.loadManyToMany(parents, model, resolved)
+        await this.loadManyToMany(parents, model, resolved);
       } else if (meta.isList) {
-        await this.loadList(parents, model, resolved)
+        await this.loadList(parents, model, resolved);
       } else {
-        await this.loadSingle(parents, model, resolved)
+        await this.loadSingle(parents, model, resolved);
       }
     }
 
-    return parents
+    return parents;
   }
 
   private parentKeys<T extends Record<string, any>>(parents: T[], model: ModelMeta): any[] {
-    const pk = model.primaryKey
-    return [...new Set(parents.map((p) => p[pk]).filter((v) => v !== undefined && v !== null))]
+    const pk = model.primaryKey;
+    return [...new Set(parents.map((p) => p[pk]).filter((v) => v !== undefined && v !== null))];
   }
 
   private async queryChildren(
     child: ModelMeta,
     where: { column: string; values: any[] } | null,
     opts: Omit<ResolvedInclude, 'meta' | 'child'>,
-    extraColumns: string[] = []
+    extraColumns: string[] = [],
   ): Promise<Record<string, any>[]> {
-    const params: any[] = []
-    let paramIndex = 1
-    const ph = () => this.driver.getPlaceholder(paramIndex++)
-    const clauses: string[] = []
-    const resolved = resolveSelect(child, opts.select, opts.include)
+    const params: any[] = [];
+    let paramIndex = 1;
+    const ph = () => this.driver.getPlaceholder(paramIndex++);
+    const clauses: string[] = [];
+    const resolved = resolveSelect(child, opts.select, opts.include);
     const projectionCols = resolved.columns
       ? [...new Set([...resolved.columns, ...extraColumns])]
-      : null
+      : null;
 
     if (where && where.values.length > 0) {
-      const placeholders = where.values.map(() => ph())
-      clauses.push(`${this.qc(where.column)} IN (${placeholders.join(', ')})`)
-      params.push(...where.values)
+      const placeholders = where.values.map(() => ph());
+      clauses.push(`${this.qc(where.column)} IN (${placeholders.join(', ')})`);
+      params.push(...where.values);
     } else if (where) {
-      return []
+      return [];
     }
 
     if (opts.where) {
-      const { sql, params: whereParams } = this.buildChildWhere(opts.where, child, paramIndex)
+      const { sql, params: whereParams } = this.buildChildWhere(opts.where, child, paramIndex);
       if (sql) {
-        clauses.push(`(${sql})`)
-        params.push(...whereParams)
-        paramIndex += whereParams.length
+        clauses.push(`(${sql})`);
+        params.push(...whereParams);
+        paramIndex += whereParams.length;
       }
     }
 
-    const projection = projectionCols
-      ? projectionCols.map((c) => this.qc(c)).join(', ')
-      : '*'
-    let sql = `SELECT ${projection} FROM ${this.qt(child.table)}`
-    if (clauses.length > 0) sql += ` WHERE ${clauses.join(' AND ')}`
+    const projection = projectionCols ? projectionCols.map((c) => this.qc(c)).join(', ') : '*';
+    let sql = `SELECT ${projection} FROM ${this.qt(child.table)}`;
+    if (clauses.length > 0) sql += ` WHERE ${clauses.join(' AND ')}`;
     if (opts.orderBy) {
       const order = Object.entries(opts.orderBy)
         .map(([col, dir]) => `${this.qc(col)} ${assertSafeDirection(dir)}`)
-        .join(', ')
-      if (order) sql += ` ORDER BY ${order}`
+        .join(', ');
+      if (order) sql += ` ORDER BY ${order}`;
     }
-    assertSafeInteger(opts.take, 'LIMIT')
-    if (opts.take !== undefined) sql += ` LIMIT ${opts.take}`
-    assertSafeInteger(opts.skip, 'OFFSET')
-    if (opts.skip !== undefined) sql += ` OFFSET ${opts.skip}`
+    assertSafeInteger(opts.take, 'LIMIT');
+    if (opts.take !== undefined) sql += ` LIMIT ${opts.take}`;
+    assertSafeInteger(opts.skip, 'OFFSET');
+    if (opts.skip !== undefined) sql += ` OFFSET ${opts.skip}`;
 
-    const result = await this.driver.query(sql, params)
-    return result.rows
+    const result = await this.driver.query(sql, params);
+    return result.rows;
   }
 
   private buildChildWhere(
     where: WhereInput,
     child: ModelMeta,
-    startIndex: number
+    startIndex: number,
   ): { sql: string; params: any[] } {
     return buildWhere(
       where,
       child,
       this.registry,
       (i) => this.driver.getPlaceholder(startIndex + i - 1),
-      this.quote
-    )
+      this.quote,
+    );
   }
 
   private async loadList<T extends Record<string, any>>(
     parents: T[],
     model: ModelMeta,
-    resolved: ResolvedInclude
+    resolved: ResolvedInclude,
   ): Promise<void> {
-    const { meta, child } = resolved
-    const keys = this.parentKeys(parents, model)
-    if (keys.length === 0) return
+    const { meta, child } = resolved;
+    const keys = this.parentKeys(parents, model);
+    if (keys.length === 0) return;
 
-    const fk = meta.fkFields[0]
-    const pk = meta.pkFields[0] ?? model.primaryKey
-    const children = await this.queryChildren(child, { column: fk, values: keys }, resolved, [fk])
+    const fk = meta.fkFields[0];
+    const pk = meta.pkFields[0] ?? model.primaryKey;
+    const children = await this.queryChildren(child, { column: fk, values: keys }, resolved, [fk]);
 
-    const grouped = new Map<any, Record<string, any>[]>()
+    const grouped = new Map<any, Record<string, any>[]>();
     for (const c of children) {
-      const key = c[fk]
-      const list = grouped.get(key) ?? []
-      list.push(c)
-      grouped.set(key, list)
+      const key = c[fk];
+      const list = grouped.get(key) ?? [];
+      list.push(c);
+      grouped.set(key, list);
     }
 
     for (const parent of parents) {
-      ;(parent as Record<string, unknown>)[meta.field] = grouped.get(parent[pk]) ?? []
+      (parent as Record<string, unknown>)[meta.field] = grouped.get(parent[pk]) ?? [];
     }
 
     if (resolved.include) {
-      await this.load(children, child, resolved.include)
+      await this.load(children, child, resolved.include);
     }
-    stripColumns(children, resolveSelect(child, resolved.select, resolved.include).keep)
+    stripColumns(children, resolveSelect(child, resolved.select, resolved.include).keep);
   }
 
   private async loadSingle<T extends Record<string, any>>(
     parents: T[],
     model: ModelMeta,
-    resolved: ResolvedInclude
+    resolved: ResolvedInclude,
   ): Promise<void> {
-    const { meta, child } = resolved
+    const { meta, child } = resolved;
 
     if (meta.isFkHolder) {
-      const fkValues = [...new Set(
-        parents.map((p) => p[meta.fkFields[0]]).filter((v) => v !== undefined && v !== null)
-      )]
+      const fkValues = [
+        ...new Set(
+          parents.map((p) => p[meta.fkFields[0]]).filter((v) => v !== undefined && v !== null),
+        ),
+      ];
       if (fkValues.length === 0) {
-        for (const parent of parents) (parent as Record<string, unknown>)[meta.field] = null
-        return
+        for (const parent of parents) (parent as Record<string, unknown>)[meta.field] = null;
+        return;
       }
-      const pk = meta.pkFields[0] ?? child.primaryKey
-      const children = await this.queryChildren(child, { column: pk, values: fkValues }, resolved, [pk])
-      const byPk = new Map(children.map((c) => [c[pk], c]))
+      const pk = meta.pkFields[0] ?? child.primaryKey;
+      const children = await this.queryChildren(child, { column: pk, values: fkValues }, resolved, [
+        pk,
+      ]);
+      const byPk = new Map(children.map((c) => [c[pk], c]));
       for (const parent of parents) {
-        (parent as Record<string, unknown>)[meta.field] = byPk.get(parent[meta.fkFields[0]]) ?? null
+        (parent as Record<string, unknown>)[meta.field] =
+          byPk.get(parent[meta.fkFields[0]]) ?? null;
       }
       if (resolved.include) {
-        await this.load(children, child, resolved.include)
+        await this.load(children, child, resolved.include);
       }
-      stripColumns(children, resolveSelect(child, resolved.select, resolved.include).keep)
+      stripColumns(children, resolveSelect(child, resolved.select, resolved.include).keep);
     } else {
-      const keys = this.parentKeys(parents, model)
-      if (keys.length === 0) return
-      const fk = meta.fkFields[0]
-      const pk = meta.pkFields[0] ?? model.primaryKey
-      const children = await this.queryChildren(child, { column: fk, values: keys }, resolved, [fk])
-      const byFk = new Map(children.map((c) => [c[fk], c]))
+      const keys = this.parentKeys(parents, model);
+      if (keys.length === 0) return;
+      const fk = meta.fkFields[0];
+      const pk = meta.pkFields[0] ?? model.primaryKey;
+      const children = await this.queryChildren(child, { column: fk, values: keys }, resolved, [
+        fk,
+      ]);
+      const byFk = new Map(children.map((c) => [c[fk], c]));
       for (const parent of parents) {
-        (parent as Record<string, unknown>)[meta.field] = byFk.get(parent[pk]) ?? null
+        (parent as Record<string, unknown>)[meta.field] = byFk.get(parent[pk]) ?? null;
       }
       if (resolved.include) {
-        await this.load(children, child, resolved.include)
+        await this.load(children, child, resolved.include);
       }
-      stripColumns(children, resolveSelect(child, resolved.select, resolved.include).keep)
+      stripColumns(children, resolveSelect(child, resolved.select, resolved.include).keep);
     }
   }
 
   private async loadManyToMany<T extends Record<string, any>>(
     parents: T[],
     model: ModelMeta,
-    resolved: ResolvedInclude
+    resolved: ResolvedInclude,
   ): Promise<void> {
-    const { meta, child } = resolved
-    if (!meta.joinTable) throw new Error(`Missing join table for relation "${meta.field}"`)
-    const keys = this.parentKeys(parents, model)
-    if (keys.length === 0) return
+    const { meta, child } = resolved;
+    if (!meta.joinTable) throw new Error(`Missing join table for relation "${meta.field}"`);
+    const keys = this.parentKeys(parents, model);
+    if (keys.length === 0) return;
 
-    const parentIsA = meta.pkModel < meta.targetModel
-    const parentCol = parentIsA ? 'A' : 'B'
-    const childCol = parentIsA ? 'B' : 'A'
-    const parentPk = meta.pkFields[0] ?? model.primaryKey
-    const childPk = meta.pkFields[0] ?? child.primaryKey
+    const parentIsA = meta.pkModel < meta.targetModel;
+    const parentCol = parentIsA ? 'A' : 'B';
+    const childCol = parentIsA ? 'B' : 'A';
+    const parentPk = meta.pkFields[0] ?? model.primaryKey;
+    const childPk = meta.pkFields[0] ?? child.primaryKey;
 
-    const params: any[] = []
-    let paramIndex = 1
-    const ph = () => this.driver.getPlaceholder(paramIndex++)
-    const placeholders = keys.map(() => ph())
-    params.push(...keys)
+    const params: any[] = [];
+    let paramIndex = 1;
+    const ph = () => this.driver.getPlaceholder(paramIndex++);
+    const placeholders = keys.map(() => ph());
+    params.push(...keys);
 
-    const resolvedSelect = resolveSelect(child, resolved.select, resolved.include)
+    const resolvedSelect = resolveSelect(child, resolved.select, resolved.include);
     const projection = resolvedSelect.columns
-      ? [...new Set([...resolvedSelect.columns, childPk])].map((c) => `__c.${this.qc(c)}`).join(', ')
-      : '__c.*'
+      ? [...new Set([...resolvedSelect.columns, childPk])]
+          .map((c) => `__c.${this.qc(c)}`)
+          .join(', ')
+      : '__c.*';
     let sql =
       `SELECT ${projection}, __j.${this.qc(parentCol)} AS __parent_key FROM ${this.qt(child.table)} AS __c ` +
       `JOIN ${this.qt(meta.joinTable!)} AS __j ON __c.${this.qc(childPk)} = __j.${this.qc(childCol)} ` +
-      `WHERE __j.${this.qc(parentCol)} IN (${placeholders.join(', ')})`
+      `WHERE __j.${this.qc(parentCol)} IN (${placeholders.join(', ')})`;
 
     if (resolved.where) {
-      const { sql: whereSql, params: whereParams } = this.buildChildWhere(resolved.where, child, paramIndex)
+      const { sql: whereSql, params: whereParams } = this.buildChildWhere(
+        resolved.where,
+        child,
+        paramIndex,
+      );
       if (whereSql) {
-        sql += ` AND (${whereSql})`
-        params.push(...whereParams)
+        sql += ` AND (${whereSql})`;
+        params.push(...whereParams);
       }
     }
-    if (resolved.take !== undefined) sql += ` LIMIT ${resolved.take}`
-    if (resolved.skip !== undefined) sql += ` OFFSET ${resolved.skip}`
+    if (resolved.take !== undefined) sql += ` LIMIT ${resolved.take}`;
+    if (resolved.skip !== undefined) sql += ` OFFSET ${resolved.skip}`;
 
-    const result = await this.driver.query(sql, params)
-    const grouped = new Map<any, Record<string, any>[]>()
+    const result = await this.driver.query(sql, params);
+    const grouped = new Map<any, Record<string, any>[]>();
     for (const row of result.rows as Record<string, any>[]) {
-      const { __parent_key, ...rest } = row
-      const list = grouped.get(__parent_key) ?? []
-      list.push(rest)
-      grouped.set(__parent_key, list)
+      const { __parent_key, ...rest } = row;
+      const list = grouped.get(__parent_key) ?? [];
+      list.push(rest);
+      grouped.set(__parent_key, list);
     }
 
     for (const parent of parents) {
-      (parent as Record<string, unknown>)[meta.field] = grouped.get(parent[parentPk]) ?? []
+      (parent as Record<string, unknown>)[meta.field] = grouped.get(parent[parentPk]) ?? [];
     }
 
     if (resolved.include) {
-      const all = [...grouped.values()].flat()
-      await this.load(all, child, resolved.include)
+      const all = [...grouped.values()].flat();
+      await this.load(all, child, resolved.include);
     }
-    stripColumns([...grouped.values()].flat(), resolvedSelect.keep)
+    stripColumns([...grouped.values()].flat(), resolvedSelect.keep);
   }
 }
