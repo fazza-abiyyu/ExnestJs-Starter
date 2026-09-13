@@ -1,6 +1,9 @@
 // VA-ORM MySQL Driver
 
-import type { DatabaseDriver, QueryResult } from '../core/types.js'
+import { createRequire } from 'module'
+import type { DatabaseDriver, QueryResult } from '../../core/types.js'
+
+const require = createRequire(import.meta.url)
 
 interface MySqlPool {
   query(sql: string, values?: any[]): Promise<any>
@@ -75,7 +78,7 @@ export class MysqlDriver implements DatabaseDriver {
         const [result] = await connection.query(sql, params)
         return { rowCount: (result as any).affectedRows ?? 0 }
       },
-      transaction: (nested: (driver: DatabaseDriver) => Promise<T>) => nested(txDriver),
+      transaction: <R>(nested: (driver: DatabaseDriver) => Promise<R>) => nested(txDriver),
       close: async () => {},
       getPlaceholder: (_index: number) => '?',
     }

@@ -2,7 +2,7 @@
 
 import * as fs from 'fs'
 import * as path from 'path'
-import type { VaClient } from '../../client/src/core/va.client.js'
+import type { VaClient } from '../../../client/src/core/va.client.js'
 
 export interface SeedOptions {
   force?: boolean

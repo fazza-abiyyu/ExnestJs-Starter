@@ -2,7 +2,7 @@
 //
 // Generates a typed VaClient subclass with per-model delegates.
 // The schema AST is embedded so the runtime relation registry
-// works without importing @exnest/va-schema.
+// SchemaAST type comes from the @v-va/orm/schema subpath.
 // Output follows Exnest style (single quotes, semicolons, trailing commas).
 
 import type { SchemaAST, ModelBlock } from '../../../schema/src/schema.types.js'
@@ -14,9 +14,9 @@ export class ClientGenerator {
   generate(ast: SchemaAST): string {
     this.w = new CodeWriter()
 
-    this.w.line(`import { VaClient } from '@exnest/va';`)
-    this.w.line(`import { ModelDelegate } from '@exnest/va';`)
-    this.w.line(`import type { SchemaAST } from '@exnest/va';`)
+    this.w.line(`import { VaClient } from '@v-va/orm';`)
+    this.w.line(`import { ModelDelegate } from '@v-va/orm';`)
+    this.w.line(`import type { SchemaAST } from '@v-va/orm/schema';`)
     this.w.line(`import type {`)
     for (const model of ast.model) {
       this.w.line(`  ${model.name},`)

@@ -1,11 +1,13 @@
 // VA-ORM NestJS Service
 
-import { VaClient, Repository } from '../../core/va.client.js'
+import { VaClient } from '../../core/va.client.js'
+import type { Repository } from '../../repository/repository.js'
 import type { VaClientOptions } from '../../core/va.client.js'
 
-let Injectable: ClassDecorator
-let OnModuleInit: ClassDecorator
-let OnModuleDestroy: ClassDecorator
+// any by design: @nestjs/common is an optional peer — resolved at runtime.
+let Injectable: any
+let OnModuleInit: any
+let OnModuleDestroy: any
 try {
   const nestCommon = require('@nestjs/common')
   Injectable = nestCommon.Injectable
@@ -18,7 +20,9 @@ try {
 }
 
 @Injectable()
-export class VaService implements OnModuleInit, OnModuleDestroy {
+export class VaService {
+  // NOTE: intentionally no `implements OnModuleInit/OnModuleDestroy` —
+  // @nestjs/common is an optional peer, so lifecycle hooks are duck-typed.
   private client: VaClient
 
   constructor(private options: VaClientOptions) {

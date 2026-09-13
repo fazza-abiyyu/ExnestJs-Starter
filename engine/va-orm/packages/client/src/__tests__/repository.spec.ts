@@ -6,7 +6,7 @@ import { MockDriver, testUser, testUsers } from '../../../../test-setup.js'
 
 describe('Repository', () => {
   let driver: MockDriver
-  let repo: Repository<typeof testUser>
+  let repo: Repository<any>
 
   beforeEach(() => {
     driver = new MockDriver()

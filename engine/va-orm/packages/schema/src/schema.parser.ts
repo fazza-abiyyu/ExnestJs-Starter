@@ -16,7 +16,7 @@ import type {
 export class SchemaParser {
   private tokens: string[] = []
   private position = 0
-  private current = ''
+  private current: string = ''
 
   parse(schema: string): SchemaAST {
     this.tokenize(schema)
@@ -125,6 +125,15 @@ export class SchemaParser {
 
   private peek(): string {
     return this.tokens[this.position + 1] ?? ''
+  }
+
+  /** Token predicates (methods, so strict narrowing can't misfire on the mutable cursor). */
+  private eof(): boolean {
+    return this.current === ''
+  }
+
+  private at(token: string): boolean {
+    return this.current === token
   }
 
   private expect(expected: string): void {
@@ -293,7 +302,7 @@ export class SchemaParser {
     if (this.current === '(') {
       this.advance()
       let depth = 1
-      while (depth > 0 && this.current !== '') {
+      while (depth > 0 && !this.eof()) {
         if (this.current === '(') {
           depth++
           this.advance()
@@ -304,13 +313,13 @@ export class SchemaParser {
           this.advance()
           const key = Object.keys(args).pop() || 'value'
           args[key] = this.parseValue()
-        } else if (this.current === ',') {
+        } else if (this.at(',')) {
           this.advance()
         } else if (this.current === '[') {
           this.advance()
           const list: string[] = Array.isArray(args['fields']) ? args['fields'] : []
           while (this.current !== ']' && this.current !== '') {
-            if (this.current === ',') {
+            if (this.at(',')) {
               this.advance()
               continue
             }
@@ -345,7 +354,7 @@ export class SchemaParser {
     if (this.current === '(') {
       this.advance()
       let depth = 1
-      while (depth > 0 && this.current !== '') {
+      while (depth > 0 && !this.eof()) {
         if (this.current === '(') {
           depth++
           this.advance()
@@ -356,13 +365,13 @@ export class SchemaParser {
           this.advance()
           const key = Object.keys(args).pop() || 'value'
           args[key] = this.parseValue()
-        } else if (this.current === ',') {
+        } else if (this.at(',')) {
           this.advance()
         } else if (this.current === '[') {
           this.advance()
           const list: string[] = Array.isArray(args['fields']) ? args['fields'] : []
           while (this.current !== ']' && this.current !== '') {
-            if (this.current === ',') {
+            if (this.at(',')) {
               this.advance()
               continue
             }
@@ -486,9 +495,9 @@ export class SchemaParser {
       // Array
       this.advance()
       const values: any[] = []
-      while (this.current !== ']') {
+      while (!this.at(']')) {
         values.push(this.parseValue())
-        if (this.current === ',') {
+        if (this.at(',')) {
           this.advance()
         }
       }

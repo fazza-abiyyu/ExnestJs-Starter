@@ -34,7 +34,7 @@ describe('SqliteDriver transaction', () => {
       await driver.transaction(async (tx) => {
         await tx.execute("INSERT INTO t (v) VALUES ('a')")
       })
-      const rows = await driver.query<{ v: string }>('SELECT * FROM t')
+      const rows = await driver.query<{ id: number; v: string }>('SELECT * FROM t')
       expect(rows.rows).toEqual([{ id: 1, v: 'a' }])
     } finally {
       await driver.close()

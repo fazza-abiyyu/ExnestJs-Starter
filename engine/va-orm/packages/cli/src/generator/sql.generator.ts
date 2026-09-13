@@ -255,7 +255,7 @@ export class SqlGenerator {
       : typeof args.value === 'string' ? parseInt(args.value, 10)
       : undefined
 
-    const nativeTypeMap: Record<string, (p?: number) => string> = {
+    const nativeTypeMap: Record<string, (p?: number, s?: number) => string> = {
       'Text': () => this.provider === 'mysql' ? 'LONGTEXT' : 'TEXT',
       'VarChar': (p) => `VARCHAR(${p ?? 255})`,
       'Char': (p) => `CHAR(${p ?? 1})`,

@@ -33,7 +33,7 @@ export class MigrationRollback {
     let toRollback: typeof applied
 
     if (options.to) {
-      const targetIndex = applied.findIndex(m => m.name === options.to)
+      const targetIndex = applied.findIndex((m: { name: string }) => m.name === options.to)
       if (targetIndex === -1) {
         result.errors.push(`Migration "${options.to}" not found in applied migrations`)
         return result
@@ -103,6 +103,6 @@ export class MigrationRollback {
 
   async getPendingRollbacks(): Promise<string[]> {
     const applied = await this.tracker.getApplied()
-    return applied.map(m => m.name).reverse()
+    return applied.map((m: { name: string }) => m.name).reverse()
   }
 }

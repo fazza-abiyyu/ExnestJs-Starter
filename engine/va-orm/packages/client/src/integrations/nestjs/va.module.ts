@@ -7,8 +7,9 @@ export interface VaModuleOptions extends VaClientOptions {
   isGlobal?: boolean
 }
 
-let Global: ClassDecorator
-let Module: ClassDecorator
+// any by design: @nestjs/common is an optional peer — resolved at runtime.
+let Global: any
+let Module: any
 try {
   const nestCommon = require('@nestjs/common')
   Global = nestCommon.Global

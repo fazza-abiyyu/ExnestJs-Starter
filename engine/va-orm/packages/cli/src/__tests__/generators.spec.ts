@@ -4,7 +4,7 @@ import { describe, it, expect } from 'bun:test'
 import { TypeGenerator } from '../generator/type.generator.js'
 import { ClientGenerator } from '../generator/client.generator.js'
 import { SqlGenerator } from '../generator/sql.generator.js'
-import type { SchemaAST } from '@exnest/va-schema'
+import type { SchemaAST } from '../../../schema/src/schema.types.js'
 
 const testAst: SchemaAST = {
   generator: [{ name: 'client', provider: 'va-client-js' }],
@@ -129,8 +129,9 @@ describe('ClientGenerator', () => {
 
   it('should generate imports', () => {
     const output = generator.generate(testAst)
-    expect(output).toContain("import { VaClient } from '@exnest/va'")
-    expect(output).toContain("import { ModelDelegate } from '@exnest/va'")
+    expect(output).toContain("import { VaClient } from '@v-va/orm'")
+    expect(output).toContain("import { ModelDelegate } from '@v-va/orm'")
+    expect(output).toContain("import type { SchemaAST } from '@v-va/orm/schema'")
   })
 })
 

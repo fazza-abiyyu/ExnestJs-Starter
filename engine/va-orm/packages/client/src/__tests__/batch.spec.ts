@@ -6,7 +6,7 @@ import { MockDriver, testUsers } from '../../../../test-setup.js'
 
 describe('BatchRepository', () => {
   let driver: MockDriver
-  let batch: BatchRepository<typeof testUsers[0]>
+  let batch: BatchRepository<any>
 
   beforeEach(() => {
     driver = new MockDriver()

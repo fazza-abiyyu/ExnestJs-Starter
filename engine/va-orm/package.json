@@ -1,13 +1,13 @@
 {
-  "name": "@exnest/va",
-  "version": "0.1.0",
-  "description": "VA-ORM - Lightweight, production-grade ORM for Exnest Framework",
+  "name": "@v-va/orm",
+  "version": "0.1.0-beta.0",
+  "description": "VA-ORM — lightweight, production-grade TypeScript ORM (PostgreSQL, MySQL, SQLite). Schema-first, zero heavy engine.",
   "type": "module",
   "main": "./packages/client/dist/index.js",
   "module": "./packages/client/dist/index.js",
   "types": "./packages/client/dist/index.d.ts",
   "bin": {
-    "va": "./packages/cli/bin/va.ts"
+    "va": "./packages/cli/dist/bin/va.js"
   },
   "exports": {
     ".": {
@@ -17,6 +17,10 @@
     "./cli": {
       "import": "./packages/cli/dist/index.js",
       "types": "./packages/cli/dist/index.d.ts"
+    },
+    "./schema": {
+      "import": "./packages/client/dist/schema/index.js",
+      "types": "./packages/client/dist/schema/index.d.ts"
     },
     "./nest": {
       "import": "./packages/client/dist/integrations/nestjs/index.js",
@@ -28,22 +32,48 @@
     }
   },
   "files": [
-    "packages/*/dist",
-    "packages/cli/bin"
+    "packages/client/dist",
+    "packages/cli/dist"
   ],
   "scripts": {
     "va": "bun packages/cli/bin/va.ts",
-    "build": "npm run build --workspaces",
-    "dev": "npm run dev --workspaces",
-    "test": "npm run test --workspaces",
-    "lint": "npm run lint --workspaces",
-    "typecheck": "npm run typecheck --workspaces"
+    "build": "tsup",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "prepublishOnly": "bun run build"
   },
-  "workspaces": [
-    "packages/*"
-  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/fazza-abiyyu/ExnestJs-Starter.git",
+    "directory": "engine/va-orm"
+  },
+  "homepage": "https://github.com/fazza-abiyyu/ExnestJs-Starter/tree/main/engine/va-orm",
+  "bugs": "https://github.com/fazza-abiyyu/ExnestJs-Starter/issues",
+  "keywords": ["orm", "postgres", "mysql", "sqlite", "typescript", "prisma-alternative"],
+  "author": "Void VA",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=18.0.0",
+    "bun": ">=1.0.0"
   },
-  "license": "MIT"
+  "peerDependencies": {
+    "pg": ">=8.0.0",
+    "mysql2": ">=3.0.0",
+    "better-sqlite3": ">=9.0.0"
+  },
+  "peerDependenciesMeta": {
+    "pg": { "optional": true },
+    "mysql2": { "optional": true },
+    "better-sqlite3": { "optional": true }
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "bun-types": "^1.2.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.5.0"
+  }
 }

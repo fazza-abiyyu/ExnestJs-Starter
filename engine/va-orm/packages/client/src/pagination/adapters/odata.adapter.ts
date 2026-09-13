@@ -1,6 +1,6 @@
 // VA-ORM OData Pagination Adapter
 
-import type { OffsetResult, CursorResult, KeysetResult } from '../core/types.js'
+import type { OffsetResult, CursorResult, KeysetResult } from '../../core/types.js'
 
 export interface ODataQueryParams {
   $top?: number

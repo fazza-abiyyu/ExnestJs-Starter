@@ -74,6 +74,7 @@ export type FilterOperator =
   | 'IN' | 'NOT IN'
   | 'IS NULL' | 'IS NOT NULL'
   | 'BETWEEN' | 'NOT BETWEEN'
+  | '@>' | '&&'
 
 // ============ WHERE CLAUSE ============
 

@@ -2,8 +2,8 @@
 
 import * as fs from 'fs'
 import * as path from 'path'
-import { SchemaParser } from '../../schema/src/schema.parser.js'
-import type { SchemaAST, GeneratorBlock, DatasourceBlock, ModelBlock, EnumBlock } from '../../schema/src/schema.types.js'
+import { SchemaParser } from '../../../schema/src/schema.parser.js'
+import type { SchemaAST, GeneratorBlock, DatasourceBlock, ModelBlock, EnumBlock } from '../../../schema/src/schema.types.js'
 
 export class MultiFileParser {
   private parser = new SchemaParser()

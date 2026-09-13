@@ -6,7 +6,7 @@
 
 export class CodeWriter {
   private lines: string[] = []
-  private indentLevel = 0
+  protected indentLevel = 0
 
   line(code = ''): this {
     if (code === '') {

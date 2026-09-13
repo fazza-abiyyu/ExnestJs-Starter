@@ -1,9 +1,13 @@
 // VA-ORM PostgreSQL Driver
 
-import type { DatabaseDriver, QueryResult } from '../core/types.js'
+import { createRequire } from 'module'
+import type { DatabaseDriver, QueryResult } from '../../core/types.js'
+
+const require = createRequire(import.meta.url)
 
 interface PgPool {
   query(sql: string, values?: any[]): Promise<any>
+  connect(): Promise<any>
   end(): Promise<void>
 }
 
@@ -77,7 +81,7 @@ export class PostgresDriver implements DatabaseDriver {
         const result = await client.query(sql, params)
         return { rowCount: result.rowCount ?? 0 }
       },
-      transaction: (nested: (driver: DatabaseDriver) => Promise<T>) => nested(txDriver),
+      transaction: <R>(nested: (driver: DatabaseDriver) => Promise<R>) => nested(txDriver),
       close: async () => {},
       getPlaceholder: (index: number) => this.getPlaceholder(index),
     }

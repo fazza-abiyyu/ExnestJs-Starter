@@ -1,6 +1,6 @@
-#!/usr/bin/env bun
-
 // VA-ORM CLI Runner
+// NOTE: no shebang here — the published bin gets '#!/usr/bin/env node'
+// injected by tsup (a source shebang would land on line 2 and break Node).
 // Usage: va <command> [options]
 
 import { validateCommand } from '../src/commands/validate.command.js'

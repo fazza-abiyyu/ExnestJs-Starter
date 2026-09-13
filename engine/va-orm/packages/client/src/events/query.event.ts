@@ -47,14 +47,14 @@ export class EventEmitter {
     if (!this.listeners.has(event)) {
       this.listeners.set(event, new Set())
     }
-    this.listeners.get(event)!.add(listener as EventListener)
+    this.listeners.get(event)!.add(listener as unknown as EventListener)
 
     return () => {
       this.off(event, listener)
     }
   }
 
-  off(event: string, listener: EventListener): void {
+  off(event: string, listener: EventListener<any>): void {
     const set = this.listeners.get(event)
     if (set) {
       set.delete(listener)

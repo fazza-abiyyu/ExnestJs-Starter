@@ -1,7 +1,7 @@
 // VA-ORM SQLite Driver
 
 import { Database } from 'bun:sqlite'
-import type { DatabaseDriver, QueryResult } from '../core/types.js'
+import type { DatabaseDriver, QueryResult } from '../../core/types.js'
 
 export class SqliteDriver implements DatabaseDriver {
   private db: Database
@@ -47,7 +47,7 @@ export class SqliteDriver implements DatabaseDriver {
     const txDriver: DatabaseDriver = {
       query: <R = any>(sql: string, params?: any[]) => this.query<R>(sql, params),
       execute: (sql: string, params?: any[]) => this.execute(sql, params),
-      transaction: (nested: (driver: DatabaseDriver) => Promise<T>) => nested(txDriver),
+      transaction: <R>(nested: (driver: DatabaseDriver) => Promise<R>) => nested(txDriver),
       close: async () => {},
       getPlaceholder: (_index: number) => '?',
     }

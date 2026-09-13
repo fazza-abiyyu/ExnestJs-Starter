@@ -30,7 +30,7 @@ interface ResolvedInclude {
 }
 
 function resolveIncludeArg(arg: IncludeArg): Omit<ResolvedInclude, 'meta' | 'child'> {
-  if (arg === true) return {}
+  if (typeof arg === 'boolean') return {}
   return {
     where: arg.where,
     orderBy: arg.orderBy,
@@ -174,7 +174,7 @@ export class IncludeLoader {
     }
 
     for (const parent of parents) {
-      parent[meta.field] = grouped.get(parent[pk]) ?? []
+      ;(parent as Record<string, unknown>)[meta.field] = grouped.get(parent[pk]) ?? []
     }
 
     if (resolved.include) {
@@ -195,14 +195,14 @@ export class IncludeLoader {
         parents.map((p) => p[meta.fkFields[0]]).filter((v) => v !== undefined && v !== null)
       )]
       if (fkValues.length === 0) {
-        for (const parent of parents) parent[meta.field] = null
+        for (const parent of parents) (parent as Record<string, unknown>)[meta.field] = null
         return
       }
       const pk = meta.pkFields[0] ?? child.primaryKey
       const children = await this.queryChildren(child, { column: pk, values: fkValues }, resolved, [pk])
       const byPk = new Map(children.map((c) => [c[pk], c]))
       for (const parent of parents) {
-        parent[meta.field] = byPk.get(parent[meta.fkFields[0]]) ?? null
+        (parent as Record<string, unknown>)[meta.field] = byPk.get(parent[meta.fkFields[0]]) ?? null
       }
       if (resolved.include) {
         await this.load(children, child, resolved.include)
@@ -216,7 +216,7 @@ export class IncludeLoader {
       const children = await this.queryChildren(child, { column: fk, values: keys }, resolved, [fk])
       const byFk = new Map(children.map((c) => [c[fk], c]))
       for (const parent of parents) {
-        parent[meta.field] = byFk.get(parent[pk]) ?? null
+        (parent as Record<string, unknown>)[meta.field] = byFk.get(parent[pk]) ?? null
       }
       if (resolved.include) {
         await this.load(children, child, resolved.include)
@@ -276,7 +276,7 @@ export class IncludeLoader {
     }
 
     for (const parent of parents) {
-      parent[meta.field] = grouped.get(parent[parentPk]) ?? []
+      (parent as Record<string, unknown>)[meta.field] = grouped.get(parent[parentPk]) ?? []
     }
 
     if (resolved.include) {

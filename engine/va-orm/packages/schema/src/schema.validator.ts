@@ -6,6 +6,8 @@ import type {
   ValidationWarning,
   ModelBlock,
   FieldDefinition,
+  GeneratorBlock,
+  DatasourceBlock,
 } from './schema.types.js'
 import { isScalarType } from './schema.relations.js'
 

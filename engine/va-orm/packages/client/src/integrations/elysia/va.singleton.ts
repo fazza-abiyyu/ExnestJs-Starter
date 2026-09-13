@@ -1,6 +1,7 @@
 // VA-ORM Elysia Singleton
 
-import { VaClient, Repository } from '../../core/va.client.js'
+import { VaClient } from '../../core/va.client.js'
+import type { Repository } from '../../repository/repository.js'
 import type { VaClientOptions } from '../../core/va.client.js'
 
 export class VaSingleton {
