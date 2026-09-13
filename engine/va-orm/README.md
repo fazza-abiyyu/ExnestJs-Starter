@@ -1,7 +1,7 @@
 # @v-va/orm (VA-ORM)
 
-Lightweight, production-grade TypeScript ORM — PostgreSQL, MySQL, SQLite.
-Schema-first with Prisma-like syntax, zero heavy query engine.
+TypeScript ORM — PostgreSQL, MySQL, SQLite. Schema-first with Prisma-like
+syntax, no query-engine binary.
 
 > **Beta** (`0.1.0-beta.x`): API stabilising. Pin your version. Tracking
 > issues in the GitHub repo.
@@ -21,7 +21,8 @@ bun add pg        # PostgreSQL
 bun add mysql2    # MySQL
 ```
 
-SQLite works on Bun with zero deps (`bun:sqlite` built in).
+SQLite runs on Bun with zero deps (`bun:sqlite` built in). On Node, use
+PostgreSQL or MySQL.
 
 ## Quickstart
 
@@ -68,7 +69,23 @@ await va.repository('user').create({ data: { email: 'a@x.dev', name: 'A' } });
 `@updatedAt` fields auto-refresh on write. Raw SQL, transactions,
 aggregations, relations, cursor/keyset pagination included.
 
-## Framework adapters
+## Usage
+
+Plain `VaClient` — no framework needed:
+
+```ts
+import { VaClient } from '@v-va/orm';
+
+const va = VaClient.create({
+  driver: 'postgres',
+  dsn: process.env.DATABASE_URL!,
+  models: { user: { tableName: 'users' } },
+});
+
+await va.repository('user').create({ data: { email: 'a@x.dev' } });
+```
+
+Framework adapters (thin wrappers over the same client):
 
 ```ts
 // NestJS
