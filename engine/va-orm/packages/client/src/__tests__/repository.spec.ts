@@ -124,10 +124,16 @@ describe('Repository', () => {
       expect(affected).toBe(10)
     })
 
-    it('should delete all records when no where', async () => {
+    it('should refuse deleteMany without where', async () => {
+      await expect(repo.deleteMany(undefined as any)).rejects.toThrow(/refusing deleteMany/)
+      await expect(repo.deleteMany({} as any)).rejects.toThrow(/refusing deleteMany/)
+    })
+
+    it('should delete all records via deleteAll', async () => {
       driver.setResult({ rows: [], rowCount: 100 })
-      const affected = await repo.deleteMany()
+      const affected = await repo.deleteAll()
       expect(affected).toBe(100)
+      expect(driver.getQueries()[driver.getQueries().length - 1].sql).toBe('DELETE FROM "users"')
     })
   })
 

@@ -1,7 +1,7 @@
 // VA-ORM Query Builder
 
 import type { DatabaseDriver, WhereClause, OrderClause, JoinType, SortDirection } from './types.js'
-import { ExpressionBuilder, assertSafeOperator, assertSafeDirection, assertSafeInteger } from './expression.js'
+import { ExpressionBuilder, assertSafeOperator, assertSafeDirection, assertSafeInteger, RawSql, isRawSql } from './expression.js'
 import { quoteColumn, quoteTable } from '../relation/quote.js'
 
 export class QueryBuilder<T = any> {
@@ -61,17 +61,40 @@ export class QueryBuilder<T = any> {
 
   // ============ JOIN ============
 
+  /**
+   * @param on Raw ON fragment. **Trusted developer SQL only** — prefer {@link joinOn}.
+   */
   join(table: string, on: string, alias?: string, type: JoinType = 'inner'): this {
     this._joins.push({ type, table, alias: alias || '', on })
     return this
+  }
+
+  /** Typed JOIN: quotes both sides; no free-form ON string. */
+  joinOn(
+    table: string,
+    leftColumn: string,
+    rightColumn: string,
+    alias?: string,
+    type: JoinType = 'inner',
+  ): this {
+    const on = `${quoteColumn(this.driver, leftColumn)} = ${quoteColumn(this.driver, rightColumn)}`
+    return this.join(table, on, alias, type)
   }
 
   leftJoin(table: string, on: string, alias?: string): this {
     return this.join(table, on, alias, 'left')
   }
 
+  leftJoinOn(table: string, leftColumn: string, rightColumn: string, alias?: string): this {
+    return this.joinOn(table, leftColumn, rightColumn, alias, 'left')
+  }
+
   rightJoin(table: string, on: string, alias?: string): this {
     return this.join(table, on, alias, 'right')
+  }
+
+  rightJoinOn(table: string, leftColumn: string, rightColumn: string, alias?: string): this {
+    return this.joinOn(table, leftColumn, rightColumn, alias, 'right')
   }
 
   crossJoin(table: string, alias?: string): this {
@@ -89,7 +112,7 @@ export class QueryBuilder<T = any> {
     fn(builder)
     const { sql, params } = builder.build()
     if (sql) {
-      this._where.push({ column: '', operator: '=', value: { raw: sql, values: params } })
+      this._where.push({ column: '', operator: '=', value: new RawSql(sql, params) })
       this._params.push(...params)
     }
     return this
@@ -122,7 +145,7 @@ export class QueryBuilder<T = any> {
     fn(builder)
     const { sql, params } = builder.build()
     if (sql) {
-      this._having.push({ column: '', operator: '=', value: { raw: sql, values: params } })
+      this._having.push({ column: '', operator: '=', value: new RawSql(sql, params) })
     }
     return this
   }
@@ -156,10 +179,28 @@ export class QueryBuilder<T = any> {
     return this
   }
 
-  /** Quote a SELECT item, passing through `*` and function expressions. */
+  /**
+   * Quote a SELECT item. `*` and allowlisted aggregates pass through after
+   * structural validation; everything else is quoted as an identifier.
+   * Never raw-interpolate free-form SQL (paren bypass was a CRITICAL SQLi).
+   */
   private quoteSelect(column: string): string {
     const trimmed = column.trim()
-    if (trimmed === '*' || trimmed.includes('(')) return trimmed
+    if (trimmed === '*') return trimmed
+
+    // Strict shape: COUNT/SUM/AVG/MIN/MAX of * or identifier[.ident], optional AS alias
+    if (
+      /^(count|sum|avg|min|max)\s*\(\s*(\*|[a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)?)\s*\)(?:\s+as\s+[a-zA-Z_]\w*)?$/i.test(
+        trimmed,
+      )
+    ) {
+      return trimmed
+    }
+
+    if (trimmed.includes('(')) {
+      throw new Error(`Unsafe SELECT expression rejected: ${JSON.stringify(trimmed)}`)
+    }
+
     return quoteColumn(this.driver, trimmed)
   }
 
@@ -201,7 +242,7 @@ export class QueryBuilder<T = any> {
       const whereParts: string[] = []
       for (let i = 0; i < this._where.length; i++) {
         const clause = this._where[i]
-        if (clause.value && typeof clause.value === 'object' && 'raw' in clause.value) {
+        if (isRawSql(clause.value)) {
           whereParts.push(clause.value.raw)
           params.push(...clause.value.values)
           paramIndex += clause.value.values.length
@@ -224,7 +265,7 @@ export class QueryBuilder<T = any> {
     if (this._having.length > 0) {
       const havingParts: string[] = []
       for (const clause of this._having) {
-        if (clause.value && typeof clause.value === 'object' && 'raw' in clause.value) {
+        if (isRawSql(clause.value)) {
           const processed = clause.value.raw.replace(/\?/g, () => this._placeholderFn(paramIndex++))
           havingParts.push(processed)
           params.push(...clause.value.values)

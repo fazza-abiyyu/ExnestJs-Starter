@@ -3,6 +3,7 @@
 import type { DatabaseDriver } from '../core/types.js'
 import * as fs from 'fs/promises'
 import * as path from 'path'
+import { splitSqlStatements } from '../core/security.js'
 
 export interface Migration {
   name: string
@@ -13,6 +14,28 @@ export interface Migration {
 export interface MigrationRecord {
   name: string
   appliedAt: Date
+}
+
+/** Migration names: safe path segment only (no separators / traversal). */
+const MIGRATION_NAME_RE = /^[\w][\w.-]*$/
+
+export function assertSafeMigrationName(name: string): void {
+  if (!MIGRATION_NAME_RE.test(name) || name.includes('..')) {
+    throw new Error(`Invalid migration name: ${JSON.stringify(name)}`)
+  }
+}
+
+/** Resolve a file under baseDir and refuse path escape (CWE-22). */
+export function resolveWithinBase(baseDir: string, ...segments: string[]): string {
+  for (const segment of segments) {
+    assertSafeMigrationName(segment)
+  }
+  const base = path.resolve(baseDir)
+  const target = path.resolve(base, ...segments)
+  if (target !== base && !target.startsWith(base + path.sep)) {
+    throw new Error(`Path escapes base directory: ${segments.join('/')}`)
+  }
+  return target
 }
 
 export class Migrator {
@@ -26,8 +49,11 @@ export class Migrator {
     this.migrationsDir = migrationsDir
   }
 
+  private ph(index: number): string {
+    return this.driver.getPlaceholder(index)
+  }
+
   async initialize(): Promise<void> {
-    // Create migrations table if it doesn't exist
     const sql = `
       CREATE TABLE IF NOT EXISTS ${this.migrationsTableName} (
         name VARCHAR(255) PRIMARY KEY,
@@ -80,7 +106,7 @@ export class Migrator {
       if (migration) {
         await this.rollbackMigration(migration)
         await this.driver.execute(
-          `DELETE FROM ${this.migrationsTableName} WHERE name = $1`,
+          `DELETE FROM ${this.migrationsTableName} WHERE name = ${this.ph(1)}`,
           [record.name]
         )
         rolledBack.push(record)
@@ -107,11 +133,12 @@ export class Migrator {
   }
 
   async createMigration(name: string, upSql = '', downSql = ''): Promise<string> {
+    assertSafeMigrationName(name)
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
     const filename = `${timestamp}_${name}.sql`
 
     await fs.mkdir(this.migrationsDir, { recursive: true })
-    const filePath = path.join(this.migrationsDir, filename)
+    const filePath = resolveWithinBase(this.migrationsDir, filename)
 
     const template = `-- Migration: ${name}
 -- Created at: ${new Date().toISOString()}
@@ -133,18 +160,19 @@ ${downSql}
   }
 
   async resolve(name: string, action: 'applied' | 'rolled-back'): Promise<void> {
+    assertSafeMigrationName(name)
     await this.initialize()
     if (action === 'applied') {
       const applied = await this.getAppliedMigrations()
       if (!applied.some((m) => m.name === name)) {
         await this.driver.execute(
-          `INSERT INTO ${this.migrationsTableName} (name) VALUES ($1)`,
+          `INSERT INTO ${this.migrationsTableName} (name) VALUES (${this.ph(1)})`,
           [name]
         )
       }
     } else {
       await this.driver.execute(
-        `DELETE FROM ${this.migrationsTableName} WHERE name = $1`,
+        `DELETE FROM ${this.migrationsTableName} WHERE name = ${this.ph(1)}`,
         [name]
       )
     }
@@ -174,7 +202,7 @@ ${downSql}
 
   private async loadMigration(name: string): Promise<Migration | null> {
     try {
-      const filePath = path.join(this.migrationsDir, `${name}.sql`)
+      const filePath = resolveWithinBase(this.migrationsDir, `${name}.sql`)
       const content = await fs.readFile(filePath, 'utf-8')
 
       const parts = content.split('-- Down migration')
@@ -193,17 +221,14 @@ ${downSql}
   }
 
   private async applyMigration(migration: Migration): Promise<void> {
-    const statements = migration.up
-      .split(';')
-      .map(s => s.trim())
-      .filter(s => s.length > 0)
+    const statements = splitSqlStatements(migration.up)
 
     for (const statement of statements) {
       await this.driver.execute(statement)
     }
 
     await this.driver.execute(
-      `INSERT INTO ${this.migrationsTableName} (name) VALUES ($1)`,
+      `INSERT INTO ${this.migrationsTableName} (name) VALUES (${this.ph(1)})`,
       [migration.name]
     )
   }
@@ -213,10 +238,7 @@ ${downSql}
       throw new Error(`No down migration for "${migration.name}"`)
     }
 
-    const statements = migration.down
-      .split(';')
-      .map(s => s.trim())
-      .filter(s => s.length > 0)
+    const statements = splitSqlStatements(migration.down)
 
     for (const statement of statements) {
       await this.driver.execute(statement)

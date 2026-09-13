@@ -67,6 +67,7 @@ export class SeedCommand {
   private findSeedFile(customPath?: string): string | null {
     if (customPath) {
       const fullPath = path.resolve(this.projectRoot, customPath)
+      if (!this.isWithinProject(fullPath)) return null
       return fs.existsSync(fullPath) ? fullPath : null
     }
 
@@ -89,6 +90,14 @@ export class SeedCommand {
     }
 
     return null
+  }
+
+  /** Reject absolute/relative paths that escape projectRoot (CWE-22). */
+  private isWithinProject(fullPath: string): boolean {
+    const root = path.resolve(this.projectRoot)
+    const resolved = path.resolve(fullPath)
+    const rel = path.relative(root, resolved)
+    return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel))
   }
 
   async reset(): Promise<SeedResult> {

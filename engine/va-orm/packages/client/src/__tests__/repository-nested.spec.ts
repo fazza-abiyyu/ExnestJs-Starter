@@ -4,6 +4,8 @@ import { describe, it, expect } from 'bun:test'
 import { MockDriver } from '../../../../test-setup.js'
 import type { ModelMeta } from '../core/types.js'
 import { ModelDelegate } from '../repository/model.delegate.js'
+import { NestedWriter } from '../repository/nested.writes.js'
+import { SqliteDriver } from '../drivers/sqlite/sqlite.driver.js'
 
 function userModel(): ModelMeta {
   return {
@@ -223,5 +225,105 @@ describe('ModelDelegate nested update', () => {
 
     const queries = driver.getQueries()
     expect(queries[queries.length - 1].sql).toContain('UPDATE "posts" SET "title"')
+  })
+})
+
+describe('connectOrCreate race hardening', () => {
+  it('concurrent connectOrCreate on same key creates exactly one row (live sqlite)', async () => {
+    const driver = new SqliteDriver(':memory:')
+    await driver.execute('CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)')
+    await driver.execute('CREATE TABLE posts (id INTEGER PRIMARY KEY, title TEXT, userId INTEGER)')
+    await driver.execute(`INSERT INTO users (id, name) VALUES (1, 'John')`)
+
+    const writer = new NestedWriter(driver, registry())
+    const op = { posts: { connectOrCreate: { where: { title: 'A' }, create: { title: 'A' } } } }
+
+    // Two concurrent callers, same key — in-process mutex must serialize them.
+    await Promise.all([
+      writer.update('User', { id: 1 }, op),
+      writer.update('User', { id: 1 }, op),
+    ])
+
+    const rows = await driver.query<{ n: number }>('SELECT COUNT(*) AS n FROM posts')
+    expect(rows.rows[0].n).toBe(1)
+  })
+
+  it('unique violation on create falls back to connect', async () => {
+    // MockDriver can't throw on demand — use a scripted stub.
+    // Query steps: 1) findByWhere(User) hit → 2) findByUnique(Post) miss
+    // → 3) INSERT throws unique violation → 4) re-find(Post) hit.
+    // (acquire/release lock + connect UPDATE go through execute, not query.)
+    const throwingDriver = {
+      queries: [] as Array<{ sql: string; params?: any[] }>,
+      step: 0,
+      async query<T>(sql: string, params?: any[]) {
+        this.queries.push({ sql, params })
+        this.step++
+        if (this.step === 1) return { rows: [{ id: 1, name: 'John' }], rowCount: 1 } // findByWhere(User)
+        if (this.step === 2) return { rows: [], rowCount: 0 } // findByUnique(Post): miss
+        if (this.step === 3) {
+          throw new Error('UNIQUE constraint failed: posts.title') // create loses race
+        }
+        return { rows: [{ id: 10, title: 'A', userId: 1 }], rowCount: 1 } // re-find(Post): hit
+      },
+      async execute(sql: string, params?: any[]) {
+        this.queries.push({ sql, params })
+        return { rowCount: 1 }
+      },
+      async transaction<T>(fn: (d: any) => Promise<T>) {
+        return fn(this)
+      },
+      async close() {},
+      getPlaceholder: (i: number) => `$${i}`,
+      getDialect: () => 'postgres' as const,
+    }
+
+    const writer = new NestedWriter(throwingDriver as any, registry())
+    await writer.update('User', { id: 1 }, {
+      posts: { connectOrCreate: { where: { title: 'A' }, create: { title: 'A' } } },
+    })
+
+    // After the unique-violation fallback, the row must be connected, not re-created.
+    const sqls = throwingDriver.queries.map((q) => q.sql)
+    expect(sqls.some((s) => s.startsWith('INSERT INTO "posts"'))).toBe(true)
+    expect(sqls.some((s) => s.includes('UPDATE "posts" SET "userid"'))).toBe(true)
+  })
+
+  it('mysql dialect uses GET_LOCK / RELEASE_LOCK', async () => {
+    // Standalone stub — MockDriver is typed to dialect 'postgres' only.
+    const mysqlDriver = {
+      queries: [] as Array<{ sql: string; params?: any[] }>,
+      results: [
+        { rows: [{ id: 1, name: 'John' }], rowCount: 1 }, // findByWhere(User)
+        { rowCount: 0 }, // GET_LOCK
+        { rows: [{ id: 10, userId: null, title: 'A' }], rowCount: 1 }, // findByUnique (connectOrCreate): hit
+        { rows: [{ id: 10, userId: null, title: 'A' }], rowCount: 1 }, // findByUnique (connect): hit
+        { rowCount: 1 }, // connect UPDATE
+        { rowCount: 0 }, // RELEASE_LOCK
+      ] as any[],
+      async query<T>(sql: string, params?: any[]) {
+        this.queries.push({ sql, params })
+        return this.results.shift() ?? { rows: [], rowCount: 0 }
+      },
+      async execute(sql: string, params?: any[]) {
+        this.queries.push({ sql, params })
+        return this.results.shift() ?? { rowCount: 0 }
+      },
+      async transaction<T>(fn: (d: any) => Promise<T>) {
+        return fn(this)
+      },
+      async close() {},
+      getPlaceholder: (_i: number) => '?',
+      getDialect: () => 'mysql' as const,
+    }
+
+    const writer = new NestedWriter(mysqlDriver as any, registry())
+    await writer.update('User', { id: 1 }, {
+      posts: { connectOrCreate: { where: { title: 'A' }, create: { title: 'A' } } },
+    })
+
+    const sqls = mysqlDriver.queries.map((q) => q.sql)
+    expect(sqls.some((s) => s.includes('GET_LOCK'))).toBe(true)
+    expect(sqls.some((s) => s.includes('RELEASE_LOCK'))).toBe(true)
   })
 })

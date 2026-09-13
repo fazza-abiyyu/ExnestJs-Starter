@@ -1,6 +1,7 @@
 // VA-ORM GraphQL Pagination Adapter
 
 import type { OffsetResult, CursorResult, KeysetResult } from '../../core/types.js'
+import { safeJsonParse } from '../../core/security.js'
 
 export interface GraphQLPageInfo {
   hasNextPage: boolean
@@ -95,20 +96,12 @@ export class GraphQLAdapter {
     let cursor: string | undefined
     if (args.after) {
       const decoded = Buffer.from(args.after, 'base64').toString('utf-8')
-      try {
-        const parsed = JSON.parse(decoded)
-        cursor = typeof parsed === 'string' ? parsed : decoded
-      } catch {
-        cursor = decoded
-      }
+      const parsed = safeJsonParse<unknown>(decoded)
+      cursor = typeof parsed === 'string' ? parsed : decoded
     } else if (args.before) {
       const decoded = Buffer.from(args.before, 'base64').toString('utf-8')
-      try {
-        const parsed = JSON.parse(decoded)
-        cursor = typeof parsed === 'string' ? parsed : decoded
-      } catch {
-        cursor = decoded
-      }
+      const parsed = safeJsonParse<unknown>(decoded)
+      cursor = typeof parsed === 'string' ? parsed : decoded
     }
 
     return {
@@ -147,11 +140,9 @@ export class GraphQLAdapter {
   } {
     let after: Record<string, any> | undefined
     if (args.after) {
-      try {
-        after = JSON.parse(Buffer.from(args.after, 'base64').toString('utf-8'))
-      } catch {
-        // Invalid cursor
-      }
+      after = safeJsonParse<Record<string, any>>(
+        Buffer.from(args.after, 'base64').toString('utf-8'),
+      )
     }
 
     return {
@@ -168,10 +159,6 @@ export class GraphQLAdapter {
   }
 
   static decodeCursor(cursor: string): any {
-    try {
-      return JSON.parse(Buffer.from(cursor, 'base64').toString('utf-8'))
-    } catch {
-      return null
-    }
+    return safeJsonParse(Buffer.from(cursor, 'base64').toString('utf-8')) ?? null
   }
 }

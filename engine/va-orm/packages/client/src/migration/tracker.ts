@@ -26,16 +26,20 @@ export class MigrationTracker {
     await this.driver.execute(sql)
   }
 
+  private ph(index: number): string {
+    return this.driver.getPlaceholder(index)
+  }
+
   async record(migration: string, checksum: string, executionTimeMs: number): Promise<void> {
     await this.driver.execute(
-      `INSERT INTO ${this.tableName} (name, checksum, execution_time_ms) VALUES ($1, $2, $3)`,
+      `INSERT INTO ${this.tableName} (name, checksum, execution_time_ms) VALUES (${this.ph(1)}, ${this.ph(2)}, ${this.ph(3)})`,
       [migration, checksum, executionTimeMs]
     )
   }
 
   async remove(migration: string): Promise<void> {
     await this.driver.execute(
-      `DELETE FROM ${this.tableName} WHERE name = $1`,
+      `DELETE FROM ${this.tableName} WHERE name = ${this.ph(1)}`,
       [migration]
     )
   }
@@ -49,7 +53,7 @@ export class MigrationTracker {
 
   async isApplied(migration: string): Promise<boolean> {
     const result = await this.driver.query(
-      `SELECT 1 FROM ${this.tableName} WHERE name = $1`,
+      `SELECT 1 FROM ${this.tableName} WHERE name = ${this.ph(1)}`,
       [migration]
     )
     return result.rows.length > 0
@@ -57,7 +61,7 @@ export class MigrationTracker {
 
   async getChecksum(migration: string): Promise<string | null> {
     const result = await this.driver.query(
-      `SELECT checksum FROM ${this.tableName} WHERE name = $1`,
+      `SELECT checksum FROM ${this.tableName} WHERE name = ${this.ph(1)}`,
       [migration]
     )
     return result.rows[0]?.checksum || null

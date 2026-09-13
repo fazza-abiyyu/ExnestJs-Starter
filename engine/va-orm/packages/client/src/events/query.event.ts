@@ -1,5 +1,7 @@
 // VA-ORM Query Events
 
+import { VaError } from '../core/errors.js'
+
 export type EventType = 'query' | 'error' | 'info' | 'warn'
 
 export interface QueryEvent {
@@ -90,7 +92,7 @@ export class EventEmitter {
       model,
       action,
       query,
-      params,
+      params: redactEventParams(params),
       duration,
       timestamp: new Date(),
       result,
@@ -110,8 +112,8 @@ export class EventEmitter {
       model,
       action,
       query,
-      params,
-      message,
+      params: redactEventParams(params),
+      message: VaError.redactSecrets(message),
       stack,
       timestamp: new Date(),
     })
@@ -132,4 +134,20 @@ export class EventEmitter {
       timestamp: new Date(),
     })
   }
+}
+
+/** Redact secret-looking strings (including nested objects) before events leave the client. */
+function redactEventParams(params: any[]): any[] {
+  return params.map((p) => redactParamValue(p, 0))
+}
+
+function redactParamValue(value: unknown, depth: number): unknown {
+  if (typeof value === 'string') return VaError.redactSecrets(value)
+  if (depth >= 3 || value === null || typeof value !== 'object') return value
+  if (Array.isArray(value)) return value.map((v) => redactParamValue(v, depth + 1))
+  const out: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    out[k] = redactParamValue(v, depth + 1)
+  }
+  return out
 }

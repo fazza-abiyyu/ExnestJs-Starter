@@ -39,7 +39,6 @@ describe('Migration', () => {
 
     it('should create migration file', async () => {
       const fs = await import('fs/promises')
-      const path = await import('path')
       const testDir = './test-migrations-create'
 
       try {
@@ -55,12 +54,25 @@ describe('Migration', () => {
 
         await fs.rm(testDir, { recursive: true })
       } catch (error) {
-        // Cleanup on error
         try {
           await fs.rm(testDir, { recursive: true })
         } catch {}
         throw error
       }
+    })
+
+    it('rejects path traversal in migration name (CRITICAL regression)', async () => {
+      const testMigrator = new Migrator(driver, './test-migrations')
+      await expect(testMigrator.createMigration('../../tmp/evil')).rejects.toThrow(/Invalid migration name/)
+      await expect(testMigrator.createMigration('foo/bar')).rejects.toThrow(/Invalid migration name/)
+      await expect(testMigrator.resolve('../escape', 'applied')).rejects.toThrow(/Invalid migration name/)
+    })
+
+    it('rejects path escape via resolveWithinBase', async () => {
+      const { resolveWithinBase, assertSafeMigrationName } = await import('../migration/migrator.js')
+      expect(() => assertSafeMigrationName('..')).toThrow(/Invalid migration name/)
+      expect(() => resolveWithinBase('./migrations', '../etc/passwd')).toThrow(/Invalid migration name/)
+      expect(() => resolveWithinBase('./migrations', 'ok-name.sql')).not.toThrow()
     })
 
     it('should run dev migration (create + apply)', async () => {

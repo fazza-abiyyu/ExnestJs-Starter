@@ -59,7 +59,7 @@ describe('ExpressionBuilder', () => {
       const builder = new ExpressionBuilder()
       builder.like('name', '%John%')
       const { sql, params } = builder.build()
-      expect(sql).toBe('"name" LIKE $1')
+      expect(sql).toBe('"name" LIKE $1 ESCAPE \'\\\'')
       expect(params).toEqual(['%John%'])
     })
 
@@ -67,7 +67,7 @@ describe('ExpressionBuilder', () => {
       const builder = new ExpressionBuilder()
       builder.notLike('email', '%test%')
       const { sql, params } = builder.build()
-      expect(sql).toBe('"email" NOT LIKE $1')
+      expect(sql).toBe('"email" NOT LIKE $1 ESCAPE \'\\\'')
       expect(params).toEqual(['%test%'])
     })
 
@@ -75,7 +75,7 @@ describe('ExpressionBuilder', () => {
       const builder = new ExpressionBuilder()
       builder.ilike('name', '%john%')
       const { sql, params } = builder.build()
-      expect(sql).toBe('"name" ILIKE $1')
+      expect(sql).toBe('"name" ILIKE $1 ESCAPE \'\\\'')
       expect(params).toEqual(['%john%'])
     })
 
@@ -83,7 +83,7 @@ describe('ExpressionBuilder', () => {
       const builder = new ExpressionBuilder()
       builder.notIlike('name', '%admin%')
       const { sql, params } = builder.build()
-      expect(sql).toBe('"name" NOT ILIKE $1')
+      expect(sql).toBe('"name" NOT ILIKE $1 ESCAPE \'\\\'')
       expect(params).toEqual(['%admin%'])
     })
   })
@@ -293,7 +293,7 @@ describe('ExpressionBuilder', () => {
 
       const { sql, params } = builder.build()
       expect(sql).toBe(
-        '"status" = $1 AND "age" > $2 AND ("name" LIKE $3 OR "name" LIKE $4) AND "role" IN ($5, $6) AND "score" BETWEEN $7 AND $8'
+        '"status" = $1 AND "age" > $2 AND ("name" LIKE $3 ESCAPE \'\\\' OR "name" LIKE $4 ESCAPE \'\\\') AND "role" IN ($5, $6) AND "score" BETWEEN $7 AND $8'
       )
       expect(params).toEqual(['active', 18, '%John%', '%Jane%', 'admin', 'user', 80, 100])
     })

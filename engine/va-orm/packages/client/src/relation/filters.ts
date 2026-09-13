@@ -8,6 +8,7 @@ import { ExpressionBuilder } from '../core/expression.js'
 import type { ModelMeta, RelationMeta, WhereInput } from '../core/types.js'
 import { JoinBuilder } from './join.builder.js'
 import { ansiQuote } from './quote.js'
+import { escapeLike } from '../core/security.js'
 import type { QuoteFn } from './quote.js'
 
 const RESERVED_KEYS = new Set(['AND', 'OR', 'NOT'])
@@ -94,16 +95,19 @@ function applyScalarFilter(eb: ExpressionBuilder, column: string, condition: any
   if (condition.gt !== undefined) eb.gt(column, condition.gt)
   if (condition.gte !== undefined) eb.gte(column, condition.gte)
   if (condition.contains !== undefined) {
-    if (insensitive) eb.ilike(column, `%${condition.contains}%`)
-    else eb.like(column, `%${condition.contains}%`)
+    const pattern = `%${escapeLike(condition.contains)}%`
+    if (insensitive) eb.ilike(column, pattern)
+    else eb.like(column, pattern)
   }
   if (condition.startsWith !== undefined) {
-    if (insensitive) eb.ilike(column, `${condition.startsWith}%`)
-    else eb.like(column, `${condition.startsWith}%`)
+    const pattern = `${escapeLike(condition.startsWith)}%`
+    if (insensitive) eb.ilike(column, pattern)
+    else eb.like(column, pattern)
   }
   if (condition.endsWith !== undefined) {
-    if (insensitive) eb.ilike(column, `%${condition.endsWith}`)
-    else eb.like(column, `%${condition.endsWith}`)
+    const pattern = `%${escapeLike(condition.endsWith)}`
+    if (insensitive) eb.ilike(column, pattern)
+    else eb.like(column, pattern)
   }
 }
 

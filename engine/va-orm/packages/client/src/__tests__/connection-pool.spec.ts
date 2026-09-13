@@ -156,4 +156,80 @@ describe('ConnectionPool', () => {
       }
     })
   })
+
+  describe('security: capacity & retry (HIGH)', () => {
+    it('does not exceed max under concurrent acquire', async () => {
+      let created = 0
+      pool = new ConnectionPool('sqlite', ':memory:', {
+        min: 0,
+        max: 2,
+        healthCheck: false,
+        connectionTimeoutMs: 50,
+        driverFactory: () => {
+          created++
+          const { SqliteDriver } = require('../drivers/sqlite/sqlite.driver.js')
+          return new SqliteDriver(':memory:')
+        },
+      })
+      await (pool as any).ready
+      const drivers = await Promise.all([
+        pool.acquire(),
+        pool.acquire(),
+        pool.acquire().catch(() => null),
+      ])
+      const held = drivers.filter(Boolean)
+      expect(held.length).toBeLessThanOrEqual(2)
+      expect(created).toBeLessThanOrEqual(2)
+      for (const d of held) {
+        await pool.release(d as any)
+      }
+    })
+
+    it('does not auto-retry INSERT/UPDATE (default retryMode=reads)', async () => {
+      let calls = 0
+      pool = new ConnectionPool('sqlite', ':memory:', {
+        min: 1,
+        retryAttempts: 3,
+        retryDelayMs: 1,
+        healthCheck: false,
+        driverFactory: () => {
+          const { SqliteDriver } = require('../drivers/sqlite/sqlite.driver.js')
+          const driver = new SqliteDriver(':memory:')
+          const orig = driver.execute.bind(driver)
+          driver.execute = async (sql: string, params?: any[]) => {
+            calls++
+            if (/^insert/i.test(sql.trim())) throw new Error('simulated write failure')
+            return orig(sql, params)
+          }
+          return driver
+        },
+      })
+      await expect(pool.execute('INSERT INTO t VALUES (1)')).rejects.toThrow('simulated write failure')
+      expect(calls).toBe(1)
+    })
+
+    it('may retry SELECT under retryMode=reads', async () => {
+      let calls = 0
+      pool = new ConnectionPool('sqlite', ':memory:', {
+        min: 1,
+        retryAttempts: 2,
+        retryDelayMs: 1,
+        healthCheck: false,
+        driverFactory: () => {
+          const { SqliteDriver } = require('../drivers/sqlite/sqlite.driver.js')
+          const driver = new SqliteDriver(':memory:')
+          const orig = driver.query.bind(driver)
+          driver.query = async (sql: string, params?: any[]) => {
+            calls++
+            if (calls < 2) throw new Error('transient')
+            return orig(sql, params)
+          }
+          return driver
+        },
+      })
+      const result = await pool.query('SELECT 1 as v')
+      expect(result.rows).toBeDefined()
+      expect(calls).toBe(2)
+    })
+  })
 })

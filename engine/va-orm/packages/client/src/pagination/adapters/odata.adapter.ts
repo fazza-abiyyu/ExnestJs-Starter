@@ -1,6 +1,7 @@
 // VA-ORM OData Pagination Adapter
 
 import type { OffsetResult, CursorResult, KeysetResult } from '../../core/types.js'
+import { isDangerousKey, safeJsonParse } from '../../core/security.js'
 
 export interface ODataQueryParams {
   $top?: number
@@ -102,11 +103,7 @@ export class ODataAdapter {
   } {
     let after: Record<string, any> | undefined
     if (params.$skiptoken) {
-      try {
-        after = JSON.parse(params.$skiptoken)
-      } catch {
-        // Invalid skiptoken
-      }
+      after = safeJsonParse<Record<string, any>>(params.$skiptoken)
     }
 
     return {
@@ -119,15 +116,13 @@ export class ODataAdapter {
   // ============ FILTER PARSING ============
 
   static parseFilter(filter: string): Record<string, any> {
-    // Simple OData filter parsing
-    const conditions: Record<string, any> = {}
-
-    // Parse simple eq filters: "field eq 'value'" or "field eq 123"
+    const conditions: Record<string, any> = Object.create(null)
     const eqRegex = /(\w+)\s+eq\s+(?:'([^']*)'|(\d+))/g
     let match
 
     while ((match = eqRegex.exec(filter)) !== null) {
       const [, field, stringValue, numericValue] = match
+      if (isDangerousKey(field)) continue
       conditions[field] = numericValue ? Number(numericValue) : stringValue
     }
 

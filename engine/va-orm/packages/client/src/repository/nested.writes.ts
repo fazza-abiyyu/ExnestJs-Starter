@@ -40,6 +40,14 @@ function toArray<T>(value: T | T[] | undefined): T[] {
 export class NestedWriter {
   private quote: QuoteFn
 
+  /**
+   * Per-key async mutex, shared across instances. Serializes concurrent
+   * connectOrCreate callers in the same process — required on SQLite (single
+   * connection, async interleaving) and closes same-process races on every
+   * dialect. Distinct keys run in parallel.
+   */
+  private static inProcessLocks = new Map<string, Promise<void>>()
+
   constructor(
     private driver: DatabaseDriver,
     private registry: Map<string, ModelMeta>,
@@ -182,21 +190,62 @@ export class NestedWriter {
     op: ConnectOrCreateOp
   ): Promise<void> {
     const child = this.metaOf(meta.targetModel)
-
-    // Use advisory lock to prevent race conditions
     const lockKey = this.generateLockKey(child.name, op.where)
-    await this.acquireAdvisoryLock(lockKey)
 
-    try {
-      const found = await this.findByUnique(child, op.where)
-      if (found) {
-        await this.connect(meta, parent, parentRow, op.where)
-      } else {
-        await this.nestedCreate(meta, parent, parentRow, op.create)
+    // Layer 1: in-process mutex — serializes concurrent callers on this key
+    // (covers SQLite single-connection interleaving and same-process races).
+    await this.withInProcessLock(lockKey, async () => {
+      // Layer 2: dialect-aware cross-process lock where supported.
+      await this.acquireAdvisoryLock(lockKey)
+      try {
+        const found = await this.findByUnique(child, op.where)
+        if (found) {
+          await this.connect(meta, parent, parentRow, op.where)
+        } else {
+          try {
+            await this.nestedCreate(meta, parent, parentRow, op.create)
+          } catch (e) {
+            // Layer 3: lost a cross-process race — another writer inserted
+            // first. Unique violation means the row now exists: connect to it.
+            if (this.isUniqueViolation(e)) {
+              await this.connect(meta, parent, parentRow, op.where)
+            } else {
+              throw e
+            }
+          }
+        }
+      } finally {
+        await this.releaseAdvisoryLock(lockKey)
       }
+    })
+  }
+
+  private async withInProcessLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
+    const prev = NestedWriter.inProcessLocks.get(key) ?? Promise.resolve()
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const chained = prev.then(() => gate)
+    NestedWriter.inProcessLocks.set(key, chained)
+    await prev
+    try {
+      return await fn()
     } finally {
-      await this.releaseAdvisoryLock(lockKey)
+      release()
+      // Drop the entry when we are still the tail — prevents unbounded growth.
+      if (NestedWriter.inProcessLocks.get(key) === chained) {
+        NestedWriter.inProcessLocks.delete(key)
+      }
     }
+  }
+
+  private isUniqueViolation(err: unknown): boolean {
+    const msg = err instanceof Error ? err.message : String(err)
+    // PG: "duplicate key value violates unique constraint"
+    // MySQL: "Duplicate entry ... for key"
+    // SQLite: "UNIQUE constraint failed"
+    return /duplicate key value|duplicate entry|unique constraint failed/i.test(msg)
   }
 
   private generateLockKey(modelName: string, where: Record<string, any>): string {
@@ -210,25 +259,33 @@ export class NestedWriter {
     return `${modelName}:${Math.abs(hash)}`
   }
 
-  private async acquireAdvisoryLock(lockKey: string): Promise<void> {
+  private dialect(): string {
     try {
-      await this.driver.execute(
-        `SELECT pg_advisory_lock(hashtext($1))`,
-        [lockKey]
-      )
+      return this.driver.getDialect?.() ?? ''
     } catch {
-      // Advisory locks not supported (non-PostgreSQL), skip locking
+      return ''
     }
   }
 
+  private async acquireAdvisoryLock(lockKey: string): Promise<void> {
+    const dialect = this.dialect()
+    const ph = this.driver.getPlaceholder(1)
+    if (dialect === 'postgres') {
+      await this.driver.execute(`SELECT pg_advisory_lock(hashtext(${ph}))`, [lockKey])
+    } else if (dialect === 'mysql') {
+      // 10s timeout — fail rather than block a request indefinitely.
+      await this.driver.execute(`SELECT GET_LOCK(${ph}, 10)`, [lockKey])
+    }
+    // sqlite: in-process mutex + unique-violation retry cover it.
+  }
+
   private async releaseAdvisoryLock(lockKey: string): Promise<void> {
-    try {
-      await this.driver.execute(
-        `SELECT pg_advisory_unlock(hashtext($1))`,
-        [lockKey]
-      )
-    } catch {
-      // Advisory locks not supported, skip unlocking
+    const dialect = this.dialect()
+    const ph = this.driver.getPlaceholder(1)
+    if (dialect === 'postgres') {
+      await this.driver.execute(`SELECT pg_advisory_unlock(hashtext(${ph}))`, [lockKey])
+    } else if (dialect === 'mysql') {
+      await this.driver.execute(`SELECT RELEASE_LOCK(${ph})`, [lockKey])
     }
   }
 

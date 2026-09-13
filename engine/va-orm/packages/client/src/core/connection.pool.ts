@@ -17,12 +17,13 @@ export class ConnectionPool {
   }
 
   private connections: PooledConnection[] = []
+  private inUseCount = 0
   private waitingQueue: Array<{
     resolve: (connection: DatabaseDriver) => void
     reject: (error: Error) => void
     timeout?: ReturnType<typeof setTimeout>
   }> = []
-  private config: Required<Omit<ConnectionConfig, 'connectionString' | 'host' | 'port' | 'database' | 'user' | 'password' | 'filename' | 'ssl' | 'driverFactory' | 'slowQueryThresholdMs' | 'onSlowQuery'>> & { driverFactory?: (dsn: string) => DatabaseDriver; slowQueryThresholdMs?: number; onSlowQuery?: (info: SlowQueryInfo) => void }
+  private config: Required<Omit<ConnectionConfig, 'connectionString' | 'host' | 'port' | 'database' | 'user' | 'password' | 'filename' | 'ssl' | 'driverFactory' | 'slowQueryThresholdMs' | 'onSlowQuery' | 'retryMode'>> & { driverFactory?: (dsn: string) => DatabaseDriver; slowQueryThresholdMs?: number; onSlowQuery?: (info: SlowQueryInfo) => void; retryMode: 'reads' | 'none' | 'all' }
   private stats = {
     totalQueries: 0,
     totalErrors: 0,
@@ -55,6 +56,7 @@ export class ConnectionPool {
       retryAttempts: options.retryAttempts ?? 3,
       retryDelayMs: options.retryDelayMs ?? 1000,
       retryBackoff: options.retryBackoff ?? 'exponential',
+      retryMode: options.retryMode ?? 'reads',
       applicationName: options.applicationName ?? 'va-orm',
       disablePreparedStatements: options.disablePreparedStatements ?? false,
       driverFactory: options.driverFactory,
@@ -136,6 +138,11 @@ export class ConnectionPool {
     }
   }
 
+  /** Idle + in-use must never exceed max (prevents concurrent acquire race). */
+  private totalTracked(): number {
+    return this.connections.length + this.inUseCount
+  }
+
   async acquire(): Promise<DatabaseDriver> {
     await this.ready
 
@@ -147,22 +154,33 @@ export class ConnectionPool {
     for (let i = 0; i < this.connections.length; i++) {
       const conn = this.connections[i]
       if (conn.isHealthy && conn.useCount < this.config.maxUses) {
-        // Check if connection is too old
         if (Date.now() - conn.lastUsed < this.config.maxLifetimeMs) {
           this.connections.splice(i, 1)
           conn.lastUsed = Date.now()
           conn.useCount++
+          this.inUseCount++
           return conn.driver
         }
+        // Expired / maxed uses: drop from idle and close below
+        this.connections.splice(i, 1)
+        i--
+        await conn.driver.close().catch(() => {})
+        continue
       }
     }
 
-    // Create new connection if under limit
-    if (this.connections.length < this.config.max) {
-      const conn = await this.createConnection()
-      conn.lastUsed = Date.now()
-      conn.useCount = 1
-      return conn.driver
+    // Create new connection only if idle+inUse is under hard max
+    if (this.totalTracked() < this.config.max) {
+      this.inUseCount++
+      try {
+        const conn = await this.createConnection()
+        conn.lastUsed = Date.now()
+        conn.useCount = 1
+        return conn.driver
+      } catch (error) {
+        this.inUseCount--
+        throw error
+      }
     }
 
     // Wait for a connection to become available
@@ -180,22 +198,25 @@ export class ConnectionPool {
   }
 
   async release(driver: DatabaseDriver): Promise<void> {
+    this.inUseCount = Math.max(0, this.inUseCount - 1)
+
     if (this.closed) {
       await driver.close()
       return
     }
 
-    // Find the waiting consumer
+    // Find the waiting consumer — hand off without growing the pool
     const waiting = this.waitingQueue.shift()
     if (waiting) {
       if (waiting.timeout) {
         clearTimeout(waiting.timeout)
       }
+      this.inUseCount++
       waiting.resolve(driver)
       return
     }
 
-    // Return to pool
+    // Return to idle pool
     const conn: PooledConnection = {
       driver,
       lastUsed: Date.now(),
@@ -223,11 +244,35 @@ export class ConnectionPool {
     }
   }
 
+  private isReadOnlySql(sql: string): boolean {
+    const head = sql.trimStart().slice(0, 12).toLowerCase()
+    return head.startsWith('select') || head.startsWith('explain') || head.startsWith('show')
+  }
+
+  /**
+   * How many times this statement may be attempted (1 = no retry).
+   * Default `reads` never retries writes — avoids double INSERT/UPDATE.
+   */
+  private maxAttemptsFor(sql: string, method: 'query' | 'execute'): number {
+    if (this.config.retryMode === 'none') return 1
+    if (this.config.retryMode === 'all') return this.config.retryAttempts + 1
+    if (method === 'execute') return 1
+    return this.isReadOnlySql(sql) ? this.config.retryAttempts + 1 : 1
+  }
+
+  private async backoffDelay(attempt: number): Promise<void> {
+    const delay = this.config.retryBackoff === 'exponential'
+      ? this.config.retryDelayMs * Math.pow(2, attempt)
+      : this.config.retryDelayMs
+    await new Promise(resolve => setTimeout(resolve, delay))
+  }
+
   async query<T = any>(sql: string, params?: any[]): Promise<{ rows: T[]; rowCount: number }> {
     const start = Date.now()
     let lastError: Error | undefined
+    const maxAttempts = this.maxAttemptsFor(sql, 'query')
 
-    for (let attempt = 0; attempt <= this.config.retryAttempts; attempt++) {
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
       const driver = await this.acquire()
       try {
         const result = await driver.query<T>(sql, params)
@@ -239,11 +284,8 @@ export class ConnectionPool {
         this.stats.totalErrors++
         await driver.close().catch(() => {})
 
-        if (attempt < this.config.retryAttempts) {
-          const delay = this.config.retryBackoff === 'exponential'
-            ? this.config.retryDelayMs * Math.pow(2, attempt)
-            : this.config.retryDelayMs
-          await new Promise(resolve => setTimeout(resolve, delay))
+        if (attempt < maxAttempts - 1) {
+          await this.backoffDelay(attempt)
         }
       }
     }
@@ -254,8 +296,9 @@ export class ConnectionPool {
   async execute(sql: string, params?: any[]): Promise<{ rowCount: number }> {
     const start = Date.now()
     let lastError: Error | undefined
+    const maxAttempts = this.maxAttemptsFor(sql, 'execute')
 
-    for (let attempt = 0; attempt <= this.config.retryAttempts; attempt++) {
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
       const driver = await this.acquire()
       try {
         const result = await driver.execute(sql, params)
@@ -267,11 +310,8 @@ export class ConnectionPool {
         this.stats.totalErrors++
         await driver.close().catch(() => {})
 
-        if (attempt < this.config.retryAttempts) {
-          const delay = this.config.retryBackoff === 'exponential'
-            ? this.config.retryDelayMs * Math.pow(2, attempt)
-            : this.config.retryDelayMs
-          await new Promise(resolve => setTimeout(resolve, delay))
+        if (attempt < maxAttempts - 1) {
+          await this.backoffDelay(attempt)
         }
       }
     }
@@ -364,9 +404,9 @@ export class ConnectionPool {
 
   getStats(): PoolStats {
     return {
-      totalCount: this.connections.length + this.waitingQueue.length,
+      totalCount: this.totalTracked() + this.waitingQueue.length,
       idleCount: this.connections.length,
-      activeCount: this.waitingQueue.length,
+      activeCount: this.inUseCount,
       waitingCount: this.waitingQueue.length,
       totalQueries: this.stats.totalQueries,
       totalErrors: this.stats.totalErrors,

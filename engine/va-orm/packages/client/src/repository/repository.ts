@@ -51,10 +51,17 @@ export class Repository<T extends Record<string, any>> {
 
     const touched = data.map((item) => this.touch({ ...(item as Record<string, any>) }))
     const columns = Object.keys(touched[0])
+    const columnKey = columns.slice().sort().join('\u0000')
+    for (const item of touched) {
+      const keys = Object.keys(item).sort().join('\u0000')
+      if (keys !== columnKey) {
+        throw new Error('createMany: all rows must share the same column set')
+      }
+    }
     const results: T[] = []
 
     for (const item of touched) {
-      const values = Object.values(item)
+      const values = columns.map((c) => item[c])
       const placeholders = values.map((_, i) => this.driver.getPlaceholder(i + 1))
       const sql = `INSERT INTO ${quoteTable(this.driver, this.tableName)} (${columns.map((c) => quoteColumn(this.driver, c)).join(', ')}) VALUES (${placeholders.join(', ')}) RETURNING *`
       const result = await this.driver.query<T>(sql, values)
@@ -134,6 +141,9 @@ export class Repository<T extends Record<string, any>> {
   // ============ UPDATE ============
 
   async update(where: Partial<T>, data: Partial<T>): Promise<T> {
+    if (Object.keys(where).length === 0) {
+      throw new Error('refusing UPDATE without WHERE')
+    }
     const { setParts, params: setValues, nextIndex } = buildSetClause(
       this.touch({ ...(data as Record<string, any>) }),
       (i) => this.driver.getPlaceholder(i),
@@ -150,6 +160,9 @@ export class Repository<T extends Record<string, any>> {
   }
 
   async updateMany(where: Partial<T>, data: Partial<T>): Promise<number> {
+    if (Object.keys(where).length === 0) {
+      throw new Error('refusing UPDATE without WHERE')
+    }
     const { setParts, params: setValues, nextIndex } = buildSetClause(
       this.touch({ ...(data as Record<string, any>) }),
       (i) => this.driver.getPlaceholder(i),
@@ -185,6 +198,9 @@ export class Repository<T extends Record<string, any>> {
   // ============ DELETE ============
 
   async delete(where: Partial<T>): Promise<T> {
+    if (Object.keys(where).length === 0) {
+      throw new Error('refusing DELETE without WHERE')
+    }
     const conditions = Object.entries(where)
     const whereParts = conditions.map(([key], i) => `${quoteColumn(this.driver, key)} = ${this.driver.getPlaceholder(i + 1)}`)
     const whereValues = conditions.map(([, value]) => value)
@@ -200,11 +216,16 @@ export class Repository<T extends Record<string, any>> {
     return result.rows[0]
   }
 
-  async deleteMany(where?: Partial<T>): Promise<number> {
-    if (!where) {
-      const sql = `DELETE FROM ${quoteTable(this.driver, this.tableName)}`
-      const result = await this.driver.execute(sql)
-      return result.rowCount
+  /**
+   * Delete rows matching `where`. Refuses an empty/missing filter — wiping a
+   * whole table must go through {@link deleteAll} so it is explicit at the
+   * call site.
+   */
+  async deleteMany(where: Partial<T>): Promise<number> {
+    if (!where || Object.keys(where).length === 0) {
+      throw new Error(
+        'refusing deleteMany without WHERE — use deleteAll() to remove every row intentionally',
+      )
     }
 
     const conditions = Object.entries(where)
@@ -219,6 +240,22 @@ export class Repository<T extends Record<string, any>> {
 
     const sql = `DELETE FROM ${quoteTable(this.driver, this.tableName)} WHERE ${whereParts.join(' AND ')}`
     const result = await this.driver.execute(sql, whereValues)
+    return result.rowCount
+  }
+
+  /**
+   * Remove every row in the table. Explicit escape hatch — the name makes the
+   * blast radius obvious at the call site (unlike a bare deleteMany()).
+   */
+  async deleteAll(): Promise<number> {
+    if (this.options.softDelete) {
+      const sql = `UPDATE ${quoteTable(this.driver, this.tableName)} SET ${quoteColumn(this.driver, this.options.softDeleteColumn)} = NOW()`
+      const result = await this.driver.execute(sql)
+      return result.rowCount
+    }
+
+    const sql = `DELETE FROM ${quoteTable(this.driver, this.tableName)}`
+    const result = await this.driver.execute(sql)
     return result.rowCount
   }
 

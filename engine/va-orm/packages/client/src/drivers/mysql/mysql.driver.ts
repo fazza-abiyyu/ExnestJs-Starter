@@ -2,6 +2,7 @@
 
 import { createRequire } from 'module'
 import type { DatabaseDriver, QueryResult } from '../../core/types.js'
+import { VaError } from '../../core/errors.js'
 
 const require = createRequire(import.meta.url)
 
@@ -52,20 +53,29 @@ export class MysqlDriver implements DatabaseDriver {
   }
 
   async query<T = any>(sql: string, params?: any[]): Promise<QueryResult<T>> {
-    const [rows] = await this.pool.query(sql, params)
-    return {
-      rows: (Array.isArray(rows) ? rows : []) as T[],
-      rowCount: (Array.isArray(rows) ? rows.length : 0),
+    try {
+      const [rows] = await this.pool.query(sql, params)
+      return {
+        rows: (Array.isArray(rows) ? rows : []) as T[],
+        rowCount: (Array.isArray(rows) ? rows.length : 0),
+      }
+    } catch (error) {
+      throw VaError.wrap(error, 'mysql query')
     }
   }
 
   async execute(sql: string, params?: any[]): Promise<{ rowCount: number }> {
-    const [result] = await this.pool.query(sql, params)
-    return { rowCount: (result as any).affectedRows ?? 0 }
+    try {
+      const [result] = await this.pool.query(sql, params)
+      return { rowCount: (result as any).affectedRows ?? 0 }
+    } catch (error) {
+      throw VaError.wrap(error, 'mysql execute')
+    }
   }
 
   async transaction<T>(fn: (driver: DatabaseDriver) => Promise<T>): Promise<T> {
     const connection = await this.pool.getConnection()
+    let txDepth = 0
     const txDriver: DatabaseDriver = {
       query: async <R = any>(sql: string, params?: any[]) => {
         const [rows] = await connection.query(sql, params)
@@ -78,7 +88,26 @@ export class MysqlDriver implements DatabaseDriver {
         const [result] = await connection.query(sql, params)
         return { rowCount: (result as any).affectedRows ?? 0 }
       },
-      transaction: <R>(nested: (driver: DatabaseDriver) => Promise<R>) => nested(txDriver),
+      transaction: async <R>(nested: (driver: DatabaseDriver) => Promise<R>) => {
+        const depth = txDepth
+        const savepoint = depth === 0 ? null : `va_sp_${depth}`
+        txDepth = depth + 1
+        try {
+          if (savepoint) await connection.query(`SAVEPOINT ${savepoint}`)
+          const result = await nested(txDriver)
+          if (savepoint) await connection.query(`RELEASE SAVEPOINT ${savepoint}`)
+          return result
+        } catch (error) {
+          try {
+            if (savepoint) await connection.query(`ROLLBACK TO SAVEPOINT ${savepoint}`)
+          } catch {
+            // ignore
+          }
+          throw VaError.wrap(error, 'mysql nested transaction')
+        } finally {
+          txDepth = depth
+        }
+      },
       close: async () => {},
       getPlaceholder: (_index: number) => '?',
       getDialect: () => 'mysql' as const,
@@ -89,8 +118,12 @@ export class MysqlDriver implements DatabaseDriver {
       await connection.commit()
       return result
     } catch (error) {
-      await connection.rollback()
-      throw error
+      try {
+        await connection.rollback()
+      } catch {
+        // ignore
+      }
+      throw VaError.wrap(error, 'mysql transaction')
     } finally {
       connection.release()
     }

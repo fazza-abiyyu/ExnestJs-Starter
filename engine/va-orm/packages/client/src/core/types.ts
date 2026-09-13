@@ -52,6 +52,13 @@ export interface ConnectionConfig {
   retryAttempts?: number
   retryDelayMs?: number
   retryBackoff?: 'fixed' | 'exponential'
+  /**
+   * Which statements the pool may auto-retry.
+   * - `reads` (default): SELECT/EXPLAIN/SHOW only — never retry writes
+   * - `none`: no auto-retry
+   * - `all`: retry every statement (dangerous for non-idempotent writes)
+   */
+  retryMode?: 'reads' | 'none' | 'all'
   ssl?: boolean | { rejectUnauthorized?: boolean; ca?: string; cert?: string; key?: string }
   applicationName?: string
   disablePreparedStatements?: boolean

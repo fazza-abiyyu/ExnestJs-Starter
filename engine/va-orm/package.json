@@ -1,7 +1,7 @@
 {
   "name": "@v-va/orm",
-  "version": "0.1.0-beta.2",
-  "description": "VA-ORM — lightweight, production-grade TypeScript ORM (PostgreSQL, MySQL, SQLite). Schema-first, zero heavy engine.",
+  "version": "0.1.0-beta.3",
+  "description": "VA-ORM \u2014 lightweight, production-grade TypeScript ORM (PostgreSQL, MySQL, SQLite). Schema-first, zero heavy engine.",
   "type": "module",
   "main": "./packages/client/dist/index.js",
   "module": "./packages/client/dist/index.js",
@@ -41,7 +41,9 @@
     "build": "tsup",
     "test": "bun test",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "prepublishOnly": "bun run build"
+    "prepublishOnly": "bun run build",
+    "security:audit": "bun scripts/security-audit.ts",
+    "security:audit:strict": "bun scripts/security-audit.ts --strict"
   },
   "repository": {
     "type": "git",
@@ -50,7 +52,14 @@
   },
   "homepage": "https://github.com/fazza-abiyyu/ExnestJs-Starter/tree/main/engine/va-orm",
   "bugs": "https://github.com/fazza-abiyyu/ExnestJs-Starter/issues",
-  "keywords": ["orm", "postgres", "mysql", "sqlite", "typescript", "prisma-alternative"],
+  "keywords": [
+    "orm",
+    "postgres",
+    "mysql",
+    "sqlite",
+    "typescript",
+    "prisma-alternative"
+  ],
   "author": "Void VA",
   "license": "MIT",
   "publishConfig": {
@@ -66,9 +75,15 @@
     "better-sqlite3": ">=9.0.0"
   },
   "peerDependenciesMeta": {
-    "pg": { "optional": true },
-    "mysql2": { "optional": true },
-    "better-sqlite3": { "optional": true }
+    "pg": {
+      "optional": true
+    },
+    "mysql2": {
+      "optional": true
+    },
+    "better-sqlite3": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

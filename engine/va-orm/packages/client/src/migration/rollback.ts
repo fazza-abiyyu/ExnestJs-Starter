@@ -1,7 +1,8 @@
 // VA-ORM Migration Rollback
 
 import * as fs from 'fs'
-import * as path from 'path'
+import { resolveWithinBase } from './migrator.js'
+import { splitSqlStatements } from '../core/security.js'
 
 export interface RollbackOptions {
   steps?: number
@@ -60,8 +61,8 @@ export class MigrationRollback {
   }
 
   private async executeRollback(migrationName: string): Promise<void> {
-    const migrationDir = path.join(this.migrationsDir, migrationName)
-    const migrationFile = path.join(migrationDir, 'migration.sql')
+    const migrationDir = resolveWithinBase(this.migrationsDir, migrationName)
+    const migrationFile = resolveWithinBase(migrationDir, 'migration.sql')
 
     if (!fs.existsSync(migrationFile)) {
       throw new Error(`Migration file not found: ${migrationFile}`)
@@ -74,10 +75,7 @@ export class MigrationRollback {
       throw new Error(`No down migration found in ${migrationFile}`)
     }
 
-    const statements = downSql
-      .split(';')
-      .map(s => s.trim())
-      .filter(s => s.length > 0)
+    const statements = splitSqlStatements(downSql)
 
     for (const statement of statements) {
       await this.tracker.driver.execute(statement)
@@ -90,8 +88,8 @@ export class MigrationRollback {
   }
 
   getRollbackSql(migrationName: string): string | null {
-    const migrationDir = path.join(this.migrationsDir, migrationName)
-    const migrationFile = path.join(migrationDir, 'migration.sql')
+    const migrationDir = resolveWithinBase(this.migrationsDir, migrationName)
+    const migrationFile = resolveWithinBase(migrationDir, 'migration.sql')
 
     if (!fs.existsSync(migrationFile)) {
       return null

@@ -1,6 +1,7 @@
 // VA-ORM REST Pagination Adapter
 
 import type { OffsetResult, CursorResult, KeysetResult } from '../../core/types.js'
+import { safeJsonParse } from '../../core/security.js'
 
 export interface RestQueryParams {
   page?: number
@@ -153,11 +154,7 @@ export class RestAdapter {
   } {
     let after: Record<string, any> | undefined
     if (params.after) {
-      try {
-        after = JSON.parse(params.after)
-      } catch {
-        // Invalid after parameter
-      }
+      after = safeJsonParse<Record<string, any>>(params.after)
     }
 
     return {

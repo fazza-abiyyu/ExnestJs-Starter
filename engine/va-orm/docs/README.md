@@ -18,7 +18,8 @@ docs/
 ├── 09-integrations.md     # Framework integrations
 ├── 10-cli.md              # CLI tools
 ├── 11-testing.md          # Testing strategy
-└── 12-relations.md        # Relations (include, filters, nested writes)
+├── 12-relations.md        # Relations (include, filters, nested writes)
+└── 13-security.md         # Security plan & audit remediation
 ```
 
 ## Quick Start

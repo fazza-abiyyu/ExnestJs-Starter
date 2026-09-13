@@ -14,6 +14,15 @@ const VALID_OPERATORS: ReadonlySet<string> = new Set([
   '@>', '&&',
 ])
 
+/** SQLite has no default LIKE escape char; PG/MySQL default to `\`. Always pin it. */
+const LIKE_OPERATORS: ReadonlySet<string> = new Set([
+  'LIKE', 'NOT LIKE', 'ILIKE', 'NOT ILIKE',
+])
+
+function likeSuffix(operator: string): string {
+  return LIKE_OPERATORS.has(operator) ? ` ESCAPE '\\'` : ''
+}
+
 export function assertSafeOperator(operator: string): void {
   if (!VALID_OPERATORS.has(operator)) {
     throw new Error(`Unsafe SQL operator rejected: ${JSON.stringify(operator)}`)
@@ -35,6 +44,23 @@ export function assertSafeInteger(value: number | undefined, clause: string): vo
   if (!Number.isInteger(value) || value < 0) {
     throw new Error(`Unsafe ${clause} rejected: ${JSON.stringify(value)}`)
   }
+}
+
+/**
+ * Trusted raw SQL fragment. Only library-constructed instances are treated as
+ * SQL. Detection is `instanceof`, never `'raw' in value` — a plain object from
+ * a JSON body (`{"raw":"1=1"}`) can never be an instance, closing the
+ * duck-typing SQLi vector (CWE-89).
+ */
+export class RawSql {
+  constructor(
+    readonly raw: string,
+    readonly values: any[] = [],
+  ) {}
+}
+
+export function isRawSql(value: unknown): value is RawSql {
+  return value instanceof RawSql
 }
 
 export class ExpressionBuilder {
@@ -169,11 +195,31 @@ export class ExpressionBuilder {
 
   // ============ RAW ============
 
+  /**
+   * Inject a raw SQL condition fragment.
+   *
+   * @remarks
+   * **Trusted developer SQL only.** Never pass HTTP/user input here —
+   * values must be bind parameters (`?` / `$n` placeholders), not inlined.
+   * Prefer `eq`/`in`/`group` for anything user-influenced.
+   * Alias of {@link rawUnsafe}.
+   */
   raw(condition: string, ...values: any[]): this {
+    return this.rawUnsafe(condition, ...values)
+  }
+
+  /**
+   * Same as {@link raw} but named to signal danger.
+   * Use only for static, developer-authored SQL fragments.
+   */
+  rawUnsafe(condition: string, ...values: any[]): this {
+    if (condition.includes('\0')) {
+      throw new Error('Unsafe raw SQL rejected: null byte in fragment')
+    }
     return this.addClause({
       column: '',
       operator: '=',
-      value: { raw: condition, values },
+      value: new RawSql(condition, values),
     })
   }
 
@@ -192,11 +238,11 @@ export class ExpressionBuilder {
   }
 
   isEmpty(column: string): this {
-    return this.addClause({ column, operator: '=', value: { raw: 'ARRAY[]::[]', values: [] } })
+    return this.addClause({ column, operator: '=', value: new RawSql('ARRAY[]::[]') })
   }
 
   isNotEmpty(column: string): this {
-    return this.addClause({ column, operator: '!=', value: { raw: 'ARRAY[]::[]', values: [] } })
+    return this.addClause({ column, operator: '!=', value: new RawSql('ARRAY[]::[]') })
   }
 
   // ============ BUILD ============
@@ -243,7 +289,7 @@ export class ExpressionBuilder {
         continue
       }
 
-      if (clause.value && typeof clause.value === 'object' && 'raw' in clause.value) {
+      if (isRawSql(clause.value)) {
         const rawValues = clause.value.values
         const processed = clause.value.raw.replace(/\?/g, () => this.placeholderFn(paramIndex++))
         parts.push(`${prefix}${processed}`)
@@ -262,7 +308,9 @@ export class ExpressionBuilder {
         continue
       }
 
-      parts.push(`${prefix}${this.quote(clause.column)} ${clause.operator} ${this.placeholderFn(paramIndex++)}`)
+      parts.push(
+        `${prefix}${this.quote(clause.column)} ${clause.operator} ${this.placeholderFn(paramIndex++)}${likeSuffix(clause.operator)}`,
+      )
       params.push(clause.value)
     }
 
@@ -303,7 +351,7 @@ export class ExpressionBuilder {
         continue
       }
 
-      if (clause.value && typeof clause.value === 'object' && 'raw' in clause.value) {
+      if (isRawSql(clause.value)) {
         const rawValues = clause.value.values
         let valueIndex = 0
         const processed = clause.value.raw.replace(/\?/g, () => this.placeholderFn(paramIndex++))
@@ -312,7 +360,9 @@ export class ExpressionBuilder {
         continue
       }
 
-      parts.push(`${prefix}${this.quote(clause.column)} ${clause.operator} ${this.placeholderFn(paramIndex++)}`)
+      parts.push(
+        `${prefix}${this.quote(clause.column)} ${clause.operator} ${this.placeholderFn(paramIndex++)}${likeSuffix(clause.operator)}`,
+      )
       params.push(clause.value)
     }
 

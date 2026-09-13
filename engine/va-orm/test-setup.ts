@@ -2,9 +2,10 @@
 
 import { beforeAll, afterAll } from 'bun:test'
 import { ConnectionPool } from './packages/client/src/core/connection.pool.js'
+import type { DatabaseDriver, QueryResult } from './packages/client/src/core/types.js'
 
 // Mock database driver for unit tests
-export class MockDriver {
+export class MockDriver implements DatabaseDriver {
   private queries: Array<{ sql: string; params?: any[] }> = []
   private results: any[] = []
 
@@ -24,7 +25,7 @@ export class MockDriver {
     this.queries = []
   }
 
-  async query<T = any>(sql: string, params?: any[]): Promise<{ rows: T[]; rowCount: number }> {
+  async query<T = any>(sql: string, params?: any[]): Promise<QueryResult<T>> {
     this.queries.push({ sql, params })
     const result = this.results.shift() || { rows: [], rowCount: 0 }
     return result
@@ -36,7 +37,7 @@ export class MockDriver {
     return result
   }
 
-  async transaction<T>(fn: (driver: MockDriver) => Promise<T>): Promise<T> {
+  async transaction<T>(fn: (driver: DatabaseDriver) => Promise<T>): Promise<T> {
     return fn(this)
   }
 
