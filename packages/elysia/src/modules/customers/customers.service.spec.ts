@@ -10,27 +10,25 @@ const mockRecord = {
 };
 
 function createService() {
-  const mockPrisma = {
-    customer: {
-      findMany: mock<(...args: any[]) => Promise<any>>(() => Promise.resolve([])),
-      findUnique: mock<(...args: any[]) => Promise<any>>(() => Promise.resolve(null)),
-      findFirst: mock<(...args: any[]) => Promise<any>>(() => Promise.resolve(null)),
-      create: mock<(...args: any[]) => Promise<any>>(() => Promise.resolve(mockRecord)),
-      update: mock<(...args: any[]) => Promise<any>>(() => Promise.resolve(mockRecord)),
-      delete: mock<(...args: any[]) => Promise<any>>(() => Promise.resolve(mockRecord)),
-      count: mock<(...args: any[]) => Promise<any>>(() => Promise.resolve(0)),
-    },
+  const mockRepo = {
+    findMany: mock<(...args: any[]) => Promise<any>>(() => Promise.resolve([])),
+    findUnique: mock<(...args: any[]) => Promise<any>>(() => Promise.resolve(null)),
+    findFirst: mock<(...args: any[]) => Promise<any>>(() => Promise.resolve(null)),
+    create: mock<(...args: any[]) => Promise<any>>(() => Promise.resolve(mockRecord)),
+    update: mock<(...args: any[]) => Promise<any>>(() => Promise.resolve(mockRecord)),
+    delete: mock<(...args: any[]) => Promise<any>>(() => Promise.resolve(mockRecord)),
+    count: mock<(...args: any[]) => Promise<any>>(() => Promise.resolve(0)),
   };
-  const service = new CustomersService(mockPrisma as never);
-  return { mockPrisma, service };
+  const service = new CustomersService(mockRepo as never);
+  return { mockRepo, service };
 }
 
 describe('CustomersService', () => {
   describe('listCustomers', () => {
     test('should return list of customers', async () => {
-      const { mockPrisma, service } = createService();
-      mockPrisma.customer.findMany.mockResolvedValueOnce([mockRecord]);
-      mockPrisma.customer.count.mockResolvedValueOnce(1);
+      const { mockRepo, service } = createService();
+      mockRepo.findMany.mockResolvedValueOnce([mockRecord]);
+      mockRepo.count.mockResolvedValueOnce(1);
 
       const result = await service.listCustomers('tenant-1', {});
 
@@ -49,8 +47,8 @@ describe('CustomersService', () => {
 
   describe('getCustomer', () => {
     test('should return customer detail', async () => {
-      const { mockPrisma, service } = createService();
-      mockPrisma.customer.findUnique.mockResolvedValueOnce(mockRecord);
+      const { mockRepo, service } = createService();
+      mockRepo.findUnique.mockResolvedValueOnce(mockRecord);
 
       const result = await service.getCustomer('tenant-1', 'customer-1');
 
@@ -70,8 +68,8 @@ describe('CustomersService', () => {
 
   describe('createCustomer', () => {
     test('should create a new customer', async () => {
-      const { mockPrisma, service } = createService();
-      mockPrisma.customer.create.mockResolvedValueOnce(mockRecord);
+      const { mockRepo, service } = createService();
+      mockRepo.create.mockResolvedValueOnce(mockRecord);
 
       const result = await service.createCustomer('tenant-1', { name: 'Test Customer' });
 
@@ -79,8 +77,8 @@ describe('CustomersService', () => {
     });
 
     test('should throw ODataError 409 when duplicate', () => {
-      const { mockPrisma, service } = createService();
-      mockPrisma.customer.findFirst.mockResolvedValueOnce(mockRecord);
+      const { mockRepo, service } = createService();
+      mockRepo.findFirst.mockResolvedValueOnce(mockRecord);
 
       expect(service.createCustomer('tenant-1', { name: 'Test Customer' })).rejects.toMatchObject({
         code: 'CustomerDuplicate',
@@ -91,9 +89,9 @@ describe('CustomersService', () => {
 
   describe('updateCustomer', () => {
     test('should update customer fields', async () => {
-      const { mockPrisma, service } = createService();
-      mockPrisma.customer.findUnique.mockResolvedValueOnce(mockRecord);
-      mockPrisma.customer.update.mockResolvedValueOnce({ ...mockRecord, name: 'Updated' });
+      const { mockRepo, service } = createService();
+      mockRepo.findUnique.mockResolvedValueOnce(mockRecord);
+      mockRepo.update.mockResolvedValueOnce({ ...mockRecord, name: 'Updated' });
 
       const result = await service.updateCustomer('tenant-1', 'customer-1', { name: 'Updated' });
 
@@ -112,8 +110,8 @@ describe('CustomersService', () => {
 
   describe('archiveCustomer', () => {
     test('should archive a customer', async () => {
-      const { mockPrisma, service } = createService();
-      mockPrisma.customer.findUnique.mockResolvedValueOnce(mockRecord);
+      const { mockRepo, service } = createService();
+      mockRepo.findUnique.mockResolvedValueOnce(mockRecord);
 
       const result = await service.archiveCustomer('tenant-1', 'customer-1');
 

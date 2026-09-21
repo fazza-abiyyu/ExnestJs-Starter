@@ -16,13 +16,13 @@
     "gen:module": "bun run scripts/generate-module.ts",
     "openapi:gen": "bun run scripts/generate-openapi.ts",
     "postman:gen": "bun run scripts/generate-postman.ts",
-    "db:generate": "prisma generate",
-    "db:push": "prisma db push",
-    "db:studio": "prisma studio"
+    "va:generate": "bun run ../../engine/va-orm/packages/cli/bin/va.ts generate",
+    "va:migrate": "bun run ../../engine/va-orm/packages/cli/bin/va.ts migrate",
+    "va:push": "bun run ../../engine/va-orm/packages/cli/bin/va.ts push",
+    "va:pull": "bun run ../../engine/va-orm/packages/cli/bin/va.ts pull"
   },
   "dependencies": {
-    "@prisma/adapter-pg": "^7.8.0",
-    "@prisma/client": "^7.8.0",
+    "@v-va/orm": "file:../../engine/va-orm",
     "elysia": "^1.4.29",
     "pg": "^8.22.0",
     "zod": "^3.23.8"
@@ -35,7 +35,6 @@
     "eslint-plugin-prettier": "^5.5.6",
     "globals": "^17.9.0",
     "prettier": "^3.9.6",
-    "prisma": "^7.8.0",
     "typescript-eslint": "^8.66.0"
   }
 }

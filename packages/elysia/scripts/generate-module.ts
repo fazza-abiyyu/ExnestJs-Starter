@@ -93,7 +93,7 @@ console.log(`  → Created ${feature}.i18n.ts`)
 
 // 4. *.service.ts
 const serviceContent = `// Business logic for ${PascalName}
-import type { PrismaClient } from '@prisma/client'
+import type { Repository } from '@v-va/orm'
 import { ODataError } from '../../lib/exception/index.js'
 import { paginateList, type PaginatedResult } from '../../lib/odata/pagination.js'
 import type { ${PascalName}Data, ${PascalName}Response } from './${feature}.interface.js'
@@ -110,7 +110,7 @@ function map${PascalName}Response(${camelName}Data: ${PascalName}Data): ${Pascal
 }
 
 export class ${PascalName}Service {
-  constructor(private readonly prisma: PrismaClient) {}
+  constructor(private readonly repo: Repository<${PascalName}Data>) {}
 
   async list${PascalName}s(
     tenantId: string,
@@ -118,8 +118,8 @@ export class ${PascalName}Service {
   ): Promise<PaginatedResult<${PascalName}Response>> {
     const where = { tenantId }
     const { items, total, skip, take } = await paginateList<${PascalName}Data>(
-      (args) => this.prisma.${camelName}.findMany(args),
-      (args) => this.prisma.${camelName}.count(args),
+      (args) => this.repo.findMany({ where, orderBy: args.orderBy, limit: args.limit, offset: args.offset }),
+      (w) => this.repo.count(w as Partial<${PascalName}Data>),
       where,
       { query, defaultTop: 20 },
     )
@@ -131,8 +131,9 @@ export class ${PascalName}Service {
     ${camelName}Id: string,
     options?: { lang?: string },
   ): Promise<${PascalName}Response> {
-    const existing${PascalName} = await this.prisma.${camelName}.findUnique({
-      where: { id: ${camelName}Id, tenantId },
+    const existing${PascalName} = await this.repo.findUnique({
+      id: ${camelName}Id,
+      tenantId,
     })
     if (!existing${PascalName}) {
       throw new ODataError('${PascalName}NotFound', '${PascalName} not found', 404, options?.lang)
@@ -145,14 +146,16 @@ export class ${PascalName}Service {
     create${PascalName}Dto: Create${PascalName}Dto,
     options?: { lang?: string },
   ): Promise<${PascalName}Response> {
-    const existing${PascalName} = await this.prisma.${camelName}.findFirst({
-      where: { tenantId, name: create${PascalName}Dto.name },
+    const existing${PascalName} = await this.repo.findFirst({
+      tenantId,
+      name: create${PascalName}Dto.name,
     })
     if (existing${PascalName}) {
       throw new ODataError('${PascalName}Duplicate', '${PascalName} already exists', 409, options?.lang)
     }
-    const created${PascalName} = (await this.prisma.${camelName}.create({
-      data: { tenantId, ...create${PascalName}Dto },
+    const created${PascalName} = (await this.repo.create({
+      tenantId,
+      ...create${PascalName}Dto,
     })) as unknown as ${PascalName}Data
     return map${PascalName}Response(created${PascalName})
   }
@@ -163,8 +166,9 @@ export class ${PascalName}Service {
     update${PascalName}Dto: Update${PascalName}Dto,
     options?: { lang?: string },
   ): Promise<${PascalName}Response> {
-    const existing${PascalName} = await this.prisma.${camelName}.findUnique({
-      where: { id: ${camelName}Id, tenantId },
+    const existing${PascalName} = await this.repo.findUnique({
+      id: ${camelName}Id,
+      tenantId,
     })
     if (!existing${PascalName}) {
       throw new ODataError('${PascalName}NotFound', '${PascalName} not found', 404, options?.lang)
@@ -174,10 +178,10 @@ export class ${PascalName}Service {
     if (Object.keys(updateData).length === 0) {
       throw new ODataError('BadRequest', 'At least one field must be provided', 400, options?.lang)
     }
-    const updated${PascalName} = (await this.prisma.${camelName}.update({
-      where: { id: ${camelName}Id },
-      data: updateData,
-    })) as unknown as ${PascalName}Data
+    const updated${PascalName} = (await this.repo.update(
+      { id: ${camelName}Id },
+      updateData,
+    )) as unknown as ${PascalName}Data
     return map${PascalName}Response(updated${PascalName})
   }
 
@@ -186,13 +190,14 @@ export class ${PascalName}Service {
     ${camelName}Id: string,
     options?: { lang?: string },
   ): Promise<{ id: string }> {
-    const existing${PascalName} = await this.prisma.${camelName}.findUnique({
-      where: { id: ${camelName}Id, tenantId },
+    const existing${PascalName} = await this.repo.findUnique({
+      id: ${camelName}Id,
+      tenantId,
     })
     if (!existing${PascalName}) {
       throw new ODataError('${PascalName}NotFound', '${PascalName} not found', 404, options?.lang)
     }
-    await this.prisma.${camelName}.delete({ where: { id: ${camelName}Id } })
+    await this.repo.delete({ id: ${camelName}Id })
     return { id: ${camelName}Id }
   }
 }
@@ -304,12 +309,13 @@ import { register${PascalName}Translations } from './${feature}.i18n.js'
 import { ${PascalName}Service } from './${feature}.service.js'
 import { ${PascalName}Controller } from './${feature}.controller.js'
 import { ${feature}Routes } from '../../endpoints/${feature}/index.js'
-import { prisma } from '../../infrastructure/database/prisma.js'
+import { va } from '../../infrastructure/database/va.js'
 
 export function build${PascalName}Module(app: Elysia): Elysia {
   register${PascalName}Translations()
 
-  const ${camelName}Service = new ${PascalName}Service(prisma)
+  const ${camelName}Repo = va.repository<any>('${PascalName}')
+  const ${camelName}Service = new ${PascalName}Service(${camelName}Repo)
   const ${camelName}Controller = new ${PascalName}Controller(${camelName}Service)
 
   return mountRoutes(app, ${camelName}Controller, ${feature}Routes)
@@ -386,27 +392,25 @@ const mockRecord = {
 }
 
 function createService() {
-  const mockPrisma = {
-    ${camelName}: {
-      findMany: mock<(...args: any[]) => Promise<any>>(() => Promise.resolve([])),
-      findUnique: mock<(...args: any[]) => Promise<any>>(() => Promise.resolve(null)),
-      findFirst: mock<(...args: any[]) => Promise<any>>(() => Promise.resolve(null)),
-      create: mock<(...args: any[]) => Promise<any>>(() => Promise.resolve(mockRecord)),
-      update: mock<(...args: any[]) => Promise<any>>(() => Promise.resolve(mockRecord)),
-      delete: mock<(...args: any[]) => Promise<any>>(() => Promise.resolve(mockRecord)),
-      count: mock<(...args: any[]) => Promise<any>>(() => Promise.resolve(0)),
-    },
+  const mockRepo = {
+    findMany: mock<(...args: any[]) => Promise<any>>(() => Promise.resolve([])),
+    findUnique: mock<(...args: any[]) => Promise<any>>(() => Promise.resolve(null)),
+    findFirst: mock<(...args: any[]) => Promise<any>>(() => Promise.resolve(null)),
+    create: mock<(...args: any[]) => Promise<any>>(() => Promise.resolve(mockRecord)),
+    update: mock<(...args: any[]) => Promise<any>>(() => Promise.resolve(mockRecord)),
+    delete: mock<(...args: any[]) => Promise<any>>(() => Promise.resolve(mockRecord)),
+    count: mock<(...args: any[]) => Promise<any>>(() => Promise.resolve(0)),
   }
-  const service = new ${PascalName}Service(mockPrisma as never)
-  return { mockPrisma, service }
+  const service = new ${PascalName}Service(mockRepo as never)
+  return { mockRepo, service }
 }
 
 describe('${PascalName}Service', () => {
   describe('list${PascalName}s', () => {
     test('should return list of ${camelName}s', async () => {
-      const { mockPrisma, service } = createService()
-      mockPrisma.${camelName}.findMany.mockResolvedValueOnce([mockRecord])
-      mockPrisma.${camelName}.count.mockResolvedValueOnce(1)
+      const { mockRepo, service } = createService()
+      mockRepo.findMany.mockResolvedValueOnce([mockRecord])
+      mockRepo.count.mockResolvedValueOnce(1)
 
       const result = await service.list${PascalName}s('tenant-1', {})
 
@@ -425,8 +429,8 @@ describe('${PascalName}Service', () => {
 
   describe('get${PascalName}', () => {
     test('should return ${camelName} detail', async () => {
-      const { mockPrisma, service } = createService()
-      mockPrisma.${camelName}.findUnique.mockResolvedValueOnce(mockRecord)
+      const { mockRepo, service } = createService()
+      mockRepo.findUnique.mockResolvedValueOnce(mockRecord)
 
       const result = await service.get${PascalName}('tenant-1', '${camelName}-1')
 
@@ -445,8 +449,8 @@ describe('${PascalName}Service', () => {
 
   describe('create${PascalName}', () => {
     test('should create a new ${camelName}', async () => {
-      const { mockPrisma, service } = createService()
-      mockPrisma.${camelName}.create.mockResolvedValueOnce(mockRecord)
+      const { mockRepo, service } = createService()
+      mockRepo.create.mockResolvedValueOnce(mockRecord)
 
       const result = await service.create${PascalName}('tenant-1', { name: 'Test ${PascalName}' })
 
@@ -454,8 +458,8 @@ describe('${PascalName}Service', () => {
     })
 
     test('should throw ODataError 409 when duplicate', async () => {
-      const { mockPrisma, service } = createService()
-      mockPrisma.${camelName}.findFirst.mockResolvedValueOnce(mockRecord)
+      const { mockRepo, service } = createService()
+      mockRepo.findFirst.mockResolvedValueOnce(mockRecord)
 
       expect(
         service.create${PascalName}('tenant-1', { name: 'Test ${PascalName}' }),
@@ -465,9 +469,9 @@ describe('${PascalName}Service', () => {
 
   describe('update${PascalName}', () => {
     test('should update ${camelName} fields', async () => {
-      const { mockPrisma, service } = createService()
-      mockPrisma.${camelName}.findUnique.mockResolvedValueOnce(mockRecord)
-      mockPrisma.${camelName}.update.mockResolvedValueOnce({ ...mockRecord, name: 'Updated' })
+      const { mockRepo, service } = createService()
+      mockRepo.findUnique.mockResolvedValueOnce(mockRecord)
+      mockRepo.update.mockResolvedValueOnce({ ...mockRecord, name: 'Updated' })
 
       const result = await service.update${PascalName}('tenant-1', '${camelName}-1', { name: 'Updated' })
 
@@ -485,8 +489,8 @@ describe('${PascalName}Service', () => {
 
   describe('archive${PascalName}', () => {
     test('should archive a ${camelName}', async () => {
-      const { mockPrisma, service } = createService()
-      mockPrisma.${camelName}.findUnique.mockResolvedValueOnce(mockRecord)
+      const { mockRepo, service } = createService()
+      mockRepo.findUnique.mockResolvedValueOnce(mockRecord)
 
       const result = await service.archive${PascalName}('tenant-1', '${camelName}-1')
 
@@ -540,13 +544,13 @@ endpointRegistryContent = endpointRegistryContent.replace(
 writeFileSync(endpointRegistryPath, endpointRegistryContent, 'utf-8')
 console.log(`  → Registered ${feature} routes in endpoints/registry.ts`)
 
-// 13. Append prisma model
-const schemaPath = join(process.cwd(), 'prisma', 'schema.prisma')
+// 13. Append va-orm model
+const schemaPath = join(process.cwd(), 'va.schema')
 const schemaContent = readFileSync(schemaPath, 'utf-8')
 const modelBlock = `
 
 model ${PascalName} {
-  id        String   @id @default(uuid())
+  id        String   @id
   tenantId  String
   name      String
   createdAt DateTime @default(now())
@@ -558,8 +562,8 @@ model ${PascalName} {
 // Only append if the model doesn't already exist
 if (!schemaContent.includes(`model ${PascalName} `)) {
   writeFileSync(schemaPath, schemaContent + modelBlock, 'utf-8')
-  console.log(`  → Appended ${PascalName} model to prisma/schema.prisma`)
+  console.log(`  → Appended ${PascalName} model to va.schema`)
 }
 
 console.log(`\nDone! Generated module and endpoints for "${feature}".`)
-console.log(`Run \`bun run db:generate\` to regenerate the Prisma client.`)
+console.log(`Run \`bun run va:push to apply the schema.`)

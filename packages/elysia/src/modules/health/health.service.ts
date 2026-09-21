@@ -1,4 +1,4 @@
-import type { PrismaClient } from '@prisma/client';
+import type { VaClient } from '@v-va/orm';
 import { config as appConfig } from '../../infrastructure/config/index.js';
 import type {
   HealthStatus,
@@ -9,7 +9,7 @@ import type {
 
 export class HealthService {
   constructor(
-    private readonly prisma: PrismaClient,
+    private readonly vaClient: VaClient,
     private readonly config: typeof appConfig,
   ) {}
 
@@ -45,7 +45,7 @@ export class HealthService {
     let dbMessage: string | undefined;
 
     try {
-      await this.prisma.$queryRawUnsafe('SELECT 1');
+      await this.vaClient.raw.query('SELECT 1');
     } catch (error) {
       dbStatus = 'unavailable';
       dbMessage = error instanceof Error ? error.message : String(error);

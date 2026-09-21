@@ -8,27 +8,27 @@ export interface ODataQueryOptions {
   $count?: boolean | string;
 }
 
-export interface ODataPrismaQuery {
+export interface ODataListQuery {
   take?: number;
   skip?: number;
   orderBy?: Record<string, 'asc' | 'desc'> | Record<string, 'asc' | 'desc'>[];
   select?: Record<string, boolean>;
 }
 
-export function parseODataQuery(query: Record<string, any>): ODataPrismaQuery {
-  const prismaQuery: ODataPrismaQuery = {};
+export function parseODataQuery(query: Record<string, any>): ODataListQuery {
+  const listQuery: ODataListQuery = {};
 
   if (query.$top !== undefined) {
     const top = parseInt(String(query.$top), 10);
     if (!isNaN(top)) {
-      prismaQuery.take = top;
+      listQuery.take = top;
     }
   }
 
   if (query.$skip !== undefined) {
     const skip = parseInt(String(query.$skip), 10);
     if (!isNaN(skip)) {
-      prismaQuery.skip = skip;
+      listQuery.skip = skip;
     }
   }
 
@@ -45,7 +45,7 @@ export function parseODataQuery(query: Record<string, any>): ODataPrismaQuery {
     }
 
     if (orderByList.length > 0) {
-      prismaQuery.orderBy = orderByList.length === 1 ? orderByList[0] : orderByList;
+      listQuery.orderBy = orderByList.length === 1 ? orderByList[0] : orderByList;
     }
   }
 
@@ -61,9 +61,9 @@ export function parseODataQuery(query: Record<string, any>): ODataPrismaQuery {
     }
 
     if (Object.keys(selectObj).length > 0) {
-      prismaQuery.select = selectObj;
+      listQuery.select = selectObj;
     }
   }
 
-  return prismaQuery;
+  return listQuery;
 }

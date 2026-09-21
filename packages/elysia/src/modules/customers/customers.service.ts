@@ -1,4 +1,4 @@
-import type { PrismaClient } from '@prisma/client';
+import type { Repository } from '@v-va/orm';
 import { ODataError } from '../../lib/exception/index.js';
 import { paginateList, type PaginatedResult } from '../../lib/odata/pagination.js';
 import type { CustomerData, CustomerResponse } from './customers.interface.js';
@@ -15,16 +15,16 @@ function mapCustomerResponse(customerData: CustomerData): CustomerResponse {
 }
 
 export class CustomersService {
-  constructor(private readonly prisma: PrismaClient) {}
+  constructor(private readonly customerRepo: Repository<CustomerData>) {}
 
   async listCustomers(
     tenantId: string,
     query: Record<string, unknown>,
   ): Promise<PaginatedResult<CustomerResponse>> {
-    const where = { tenantId };
+    const where = { tenantId } as Partial<CustomerData>;
     const { items, total, skip, take } = await paginateList<CustomerData>(
-      (args) => this.prisma.customer.findMany(args),
-      (args) => this.prisma.customer.count(args),
+      (args) => this.customerRepo.findMany({ where, orderBy: args.orderBy, limit: args.limit, offset: args.offset }),
+      (w) => this.customerRepo.count(w as Partial<CustomerData>),
       where,
       { query, defaultTop: 20 },
     );
@@ -36,9 +36,10 @@ export class CustomersService {
     customerId: string,
     options?: { lang?: string },
   ): Promise<CustomerResponse> {
-    const existingCustomer = await this.prisma.customer.findUnique({
-      where: { id: customerId, tenantId },
-    });
+    const existingCustomer = await this.customerRepo.findUnique({
+      id: customerId,
+      tenantId,
+    } as Partial<CustomerData>);
     if (!existingCustomer) {
       throw new ODataError('CustomerNotFound', 'Customer not found', 404, options?.lang);
     }
@@ -50,15 +51,17 @@ export class CustomersService {
     createCustomerDto: CreateCustomerDto,
     options?: { lang?: string },
   ): Promise<CustomerResponse> {
-    const existingCustomer = await this.prisma.customer.findFirst({
-      where: { tenantId, name: createCustomerDto.name },
-    });
+    const existingCustomer = await this.customerRepo.findFirst({
+      tenantId,
+      name: createCustomerDto.name,
+    } as Partial<CustomerData>);
     if (existingCustomer) {
       throw new ODataError('CustomerDuplicate', 'Customer already exists', 409, options?.lang);
     }
-    const createdCustomer = await this.prisma.customer.create({
-      data: { tenantId, ...createCustomerDto },
-    });
+    const createdCustomer = await this.customerRepo.create({
+      tenantId,
+      ...createCustomerDto,
+    } as Partial<CustomerData>);
     return mapCustomerResponse(createdCustomer);
   }
 
@@ -68,9 +71,10 @@ export class CustomersService {
     updateCustomerDto: UpdateCustomerDto,
     options?: { lang?: string },
   ): Promise<CustomerResponse> {
-    const existingCustomer = await this.prisma.customer.findUnique({
-      where: { id: customerId, tenantId },
-    });
+    const existingCustomer = await this.customerRepo.findUnique({
+      id: customerId,
+      tenantId,
+    } as Partial<CustomerData>);
     if (!existingCustomer) {
       throw new ODataError('CustomerNotFound', 'Customer not found', 404, options?.lang);
     }
@@ -79,10 +83,10 @@ export class CustomersService {
     if (Object.keys(updateData).length === 0) {
       throw new ODataError('BadRequest', 'At least one field must be provided', 400, options?.lang);
     }
-    const updatedCustomer = await this.prisma.customer.update({
-      where: { id: customerId },
-      data: updateData,
-    });
+    const updatedCustomer = await this.customerRepo.update(
+      { id: customerId } as Partial<CustomerData>,
+      updateData as Partial<CustomerData>,
+    );
     return mapCustomerResponse(updatedCustomer);
   }
 
@@ -91,13 +95,14 @@ export class CustomersService {
     customerId: string,
     options?: { lang?: string },
   ): Promise<{ id: string }> {
-    const existingCustomer = await this.prisma.customer.findUnique({
-      where: { id: customerId, tenantId },
-    });
+    const existingCustomer = await this.customerRepo.findUnique({
+      id: customerId,
+      tenantId,
+    } as Partial<CustomerData>);
     if (!existingCustomer) {
       throw new ODataError('CustomerNotFound', 'Customer not found', 404, options?.lang);
     }
-    await this.prisma.customer.delete({ where: { id: customerId } });
+    await this.customerRepo.delete({ id: customerId } as Partial<CustomerData>);
     return { id: customerId };
   }
 }

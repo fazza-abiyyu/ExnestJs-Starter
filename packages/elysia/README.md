@@ -9,7 +9,7 @@ Bun runtime.
 ```bash
 bun install
 cp .env.example .env        # set DATABASE_URL
-bun run db:generate         # generate Prisma client
+bun run va:push                # apply va-orm schema
 bun run db:push             # push schema to DB
 bun run dev                 # http://localhost:3000
 ```
@@ -24,22 +24,22 @@ bun run dev                 # http://localhost:3000
 | `bun run gen:module` | Scaffold a new CRUD module |
 | `bun run openapi:gen` | Generate OpenAPI spec |
 | `bun run postman:gen` | Generate Postman collection |
-| `bun run db:generate` | Generate Prisma client |
+| `bun run va:push                # apply va-orm schema
 | `bun run db:push` | Push schema to DB |
-| `bun run db:studio` | Open Prisma Studio |
+| `bun run va:migrate             # migrate via va-orm
 
 ## Architecture
 
 ```
 elysia/
-├── prisma/                 # Prisma schema
+├── va.schema               # va-orm schema
 ├── scripts/                # Module + openapi + postman generators
 └── src/
     ├── index.ts            # Entry (Elysia .listen)
     ├── app.ts              # App builder (mounts modules + error handler)
     ├── infrastructure/
     │   ├── config/         # env-based config
-    │   └── database/       # PrismaClient singleton
+    │   └── database/       # VaClient singleton
     ├── lib/
     │   ├── endpoint/        # RouteConfig + mountRoutes (declarative routing)
     │   ├── exception/       # ODataError + error handler
@@ -72,7 +72,7 @@ bun run gen:module <feature-name>
 
 This scaffolds the module + endpoint set, registers the builder in
 `src/modules/registry.ts`, the routes in `src/endpoints/registry.ts`, and appends the
-Prisma model. Run `bun run db:generate` afterwards.
+Runs via va-orm schema. Run `bun run va:push` afterwards.. Run `bun run va:push                # apply va-orm schema
 
 ## OData Conventions
 

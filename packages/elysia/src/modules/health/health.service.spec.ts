@@ -3,11 +3,13 @@ import { HealthService } from './health.service.js';
 import { config } from '../../infrastructure/config/index.js';
 
 function createService() {
-  const mockPrisma = {
-    $queryRawUnsafe: mock<(...args: any[]) => Promise<any>>(() => Promise.resolve([1])),
+  const mockVaClient = {
+    raw: {
+      query: mock<(...args: any[]) => Promise<any>>(() => Promise.resolve({ rows: [{ value: 1 }] })),
+    },
   };
-  const service = new HealthService(mockPrisma as never, config);
-  return { mockPrisma, service };
+  const service = new HealthService(mockVaClient as never, config);
+  return { mockVaClient, service };
 }
 
 describe('HealthService', () => {
@@ -29,8 +31,8 @@ describe('HealthService', () => {
   });
 
   test('should return unavailable when database check fails', async () => {
-    const { mockPrisma, service } = createService();
-    mockPrisma.$queryRawUnsafe.mockRejectedValueOnce(new Error('Connection failed'));
+    const { mockVaClient, service } = createService();
+    mockVaClient.raw.query.mockRejectedValueOnce(new Error('Connection failed'));
 
     const result = await service.ready();
 

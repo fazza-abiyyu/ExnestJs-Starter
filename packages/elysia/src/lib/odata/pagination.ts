@@ -1,4 +1,4 @@
-import { parseODataQuery, type ODataPrismaQuery } from './query.js';
+import { parseODataQuery, type ODataListQuery } from './query.js';
 
 export interface PaginatedResult<T> {
   items: T[];
@@ -11,15 +11,13 @@ export interface ODataListArgs {
   query: Record<string, unknown>;
   defaultOrderBy?: Record<string, 'asc' | 'desc'> | Record<string, 'asc' | 'desc'>[];
   defaultTop?: number;
-  include?: Record<string, any>;
-  select?: Record<string, any>;
 }
 
 function resolveOrderBy(
-  prismaQuery: ODataPrismaQuery,
+  listQuery: ODataListQuery,
   defaultOrderBy?: Record<string, 'asc' | 'desc'> | Record<string, 'asc' | 'desc'>[],
 ) {
-  if (prismaQuery.orderBy) return prismaQuery.orderBy;
+  if (listQuery.orderBy) return listQuery.orderBy;
   if (defaultOrderBy) return defaultOrderBy;
   return { id: 'desc' as const };
 }
@@ -51,38 +49,42 @@ export function buildNextLink(
 }
 
 export async function paginateList<TItem>(
-  findMany: (args: any) => Promise<TItem[]>,
-  count: (args: any) => Promise<number>,
+  findMany: (args: {
+    where?: Record<string, unknown>;
+    orderBy?: Record<string, 'asc' | 'desc'>;
+    limit?: number;
+    offset?: number;
+  }) => Promise<TItem[]>,
+  count: (where?: Record<string, unknown>) => Promise<number>,
   where: Record<string, unknown>,
   options: ODataListArgs,
 ): Promise<PaginatedResult<TItem>> {
-  const prismaQuery = parseODataQuery(options.query);
+  const listQuery = parseODataQuery(options.query);
 
-  const take = prismaQuery.take ?? options.defaultTop;
-  const skip = prismaQuery.skip ?? 0;
+  const take = listQuery.take ?? options.defaultTop;
+  const skip = listQuery.skip ?? 0;
 
-  const orderBy = resolveOrderBy(prismaQuery, options.defaultOrderBy);
+  const orderByRaw = resolveOrderBy(listQuery, options.defaultOrderBy);
+  const orderBy = Array.isArray(orderByRaw) ? orderByRaw[0] : orderByRaw;
 
-  const findArgs: Record<string, any> = {
+  const findArgs: {
+    where?: Record<string, unknown>;
+    orderBy?: Record<string, 'asc' | 'desc'>;
+    limit?: number;
+    offset?: number;
+  } = {
     where,
     orderBy,
   };
 
   if (take !== undefined && take > 0) {
-    findArgs.take = take;
+    findArgs.limit = take;
   }
   if (skip !== undefined && skip > 0) {
-    findArgs.skip = skip;
+    findArgs.offset = skip;
   }
 
-  if (options.include) {
-    findArgs.include = options.include;
-  }
-  if (options.select) {
-    findArgs.select = options.select;
-  }
-
-  const [items, total] = await Promise.all([findMany(findArgs), count({ where })]);
+  const [items, total] = await Promise.all([findMany(findArgs), count(where)]);
 
   return { items, total, skip, take };
 }
