@@ -129,6 +129,38 @@ export class TypeGenerator {
     this.w.line(`  | null;`);
   }
 
+  /** JSON filter keys — mirrors the runtime JsonFilter (core/types.ts). */
+  private jsonFilterLines(): string[] {
+    return [
+      `path?: string | Array<string | number>;`,
+      `equals?: any;`,
+      `not?: any;`,
+      `in?: any[];`,
+      `notIn?: any[];`,
+      `lt?: any;`,
+      `lte?: any;`,
+      `gt?: any;`,
+      `gte?: any;`,
+      `contains?: string;`,
+      `startsWith?: string;`,
+      `endsWith?: string;`,
+      `mode?: 'default' | 'insensitive';`,
+      `arrayContains?: any;`,
+      `exists?: boolean;`,
+    ];
+  }
+
+  private unionJsonProp(prop: string): void {
+    this.w.line(`${prop}?:`);
+    this.w.line(`  | any`);
+    this.w.line(`  | {`);
+    for (const line of this.jsonFilterLines()) {
+      this.w.line(`      ${line}`);
+    }
+    this.w.line(`    }`);
+    this.w.line(`  | null;`);
+  }
+
   private generateWhereInput(model: ModelBlock): void {
     this.w.block(
       `export type ${model.name}WhereInput = {`,
@@ -160,6 +192,10 @@ export class TypeGenerator {
                 '} | null;',
               );
             }
+            continue;
+          }
+          if (f.type.replace('[]', '') === 'Json') {
+            this.unionJsonProp(f.name);
             continue;
           }
           const type = this.mapType(f.type, false);

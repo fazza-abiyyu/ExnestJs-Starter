@@ -1,0 +1,17 @@
+{
+  "name": "demo-json-search",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Demo JSON search va-orm dengan SQLite lokal",
+  "scripts": {
+    "demo": "bun src/demo.ts",
+    "demo:schema": "bun src/schema-demo.ts",
+    "schema:validate": "bun ../engine/va-orm/packages/cli/bin/va.ts validate --schema ./va.schema",
+    "schema:push": "DATABASE_URL=file:./local.db bun ../engine/va-orm/packages/cli/bin/va.ts db push --schema ./va.schema",
+    "schema:generate": "bun ../engine/va-orm/packages/cli/bin/va.ts generate --schema ./va.schema --output ./generated --sql"
+  },
+  "devDependencies": {
+    "bun-types": "^1.2.0"
+  }
+}

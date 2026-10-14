@@ -7,14 +7,17 @@ import { VaError } from '../../core/errors.js';
 export class SqliteDriver implements DatabaseDriver {
   private db: Database;
   private txDepth = 0;
+  private filename: string;
 
   constructor(
-    private filename: string,
+    filename: string,
     private options: {
       readonly?: boolean;
       wal?: boolean;
     } = {},
   ) {
+    // Accept both plain paths and file: URLs (CLI convention).
+    this.filename = filename.replace(/^file:/, '');
     this.db = this.open();
   }
 

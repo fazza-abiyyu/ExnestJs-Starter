@@ -14,6 +14,8 @@ import type {
   WhereInput,
 } from '../core/types.js';
 import { buildWhere } from './filters.js';
+import { dialectOf } from '../core/json-path.js';
+import { decodeJsonRows } from '../repository/json-codec.js';
 import { resolveSelect, stripColumns } from './select.js';
 import { quoteColumn, quoteTable } from './quote.js';
 import type { QuoteFn } from './quote.js';
@@ -146,7 +148,7 @@ export class IncludeLoader {
     if (opts.skip !== undefined) sql += ` OFFSET ${opts.skip}`;
 
     const result = await this.driver.query(sql, params);
-    return result.rows;
+    return decodeJsonRows(child, result.rows);
   }
 
   private buildChildWhere(
@@ -160,6 +162,7 @@ export class IncludeLoader {
       this.registry,
       (i) => this.driver.getPlaceholder(startIndex + i - 1),
       this.quote,
+      dialectOf(this.driver),
     );
   }
 
@@ -291,8 +294,9 @@ export class IncludeLoader {
     if (resolved.skip !== undefined) sql += ` OFFSET ${resolved.skip}`;
 
     const result = await this.driver.query(sql, params);
+    const rows = decodeJsonRows(child, result.rows as Record<string, any>[]);
     const grouped = new Map<any, Record<string, any>[]>();
-    for (const row of result.rows as Record<string, any>[]) {
+    for (const row of rows) {
       const { __parent_key, ...rest } = row;
       const list = grouped.get(__parent_key) ?? [];
       list.push(rest);

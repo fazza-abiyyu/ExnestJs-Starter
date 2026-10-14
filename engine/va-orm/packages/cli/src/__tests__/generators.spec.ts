@@ -2,7 +2,7 @@
 
 import { describe, it, expect } from 'bun:test';
 import { TypeGenerator } from '../generator/type.generator.js';
-import { ClientGenerator } from '../generator/client.generator.js';
+import { ClientGenerator, driverFor } from '../generator/client.generator.js';
 import { SqlGenerator } from '../generator/sql.generator.js';
 import type { SchemaAST } from '../../../schema/src/schema.types.js';
 
@@ -132,6 +132,31 @@ describe('TypeGenerator', () => {
     expect(output).toContain('connectOrCreate');
     expect(output).toContain('disconnect');
   });
+
+  it('should generate JSON filter keys for Json fields', () => {
+    const astWithJson: SchemaAST = {
+      ...testAst,
+      model: [
+        {
+          ...testAst.model[0],
+          fields: [
+            ...testAst.model[0].fields,
+            {
+              name: 'metadata',
+              type: 'Json',
+              isArray: false,
+              isOptional: false,
+              attributes: [],
+            },
+          ],
+        },
+      ],
+    };
+    const output = generator.generate(astWithJson);
+    expect(output).toContain('path?: string | Array<string | number>;');
+    expect(output).toContain('arrayContains?: any;');
+    expect(output).toContain('exists?: boolean;');
+  });
 });
 
 describe('ClientGenerator', () => {
@@ -154,6 +179,23 @@ describe('ClientGenerator', () => {
     const output = generator.generate(testAst);
     expect(output).toContain('const schema: SchemaAST');
     expect(output).toContain('schema,');
+  });
+
+  it('should map datasource provider to driver', () => {
+    expect(driverFor('postgresql')).toBe('postgres');
+    expect(driverFor('mysql')).toBe('mysql');
+    expect(driverFor('sqlite')).toBe('sqlite');
+    expect(driverFor(undefined)).toBe('postgres');
+    expect(driverFor('weird')).toBe('postgres');
+  });
+
+  it('should use sqlite driver for sqlite datasource', () => {
+    const sqliteAst: SchemaAST = {
+      ...testAst,
+      datasource: [{ name: 'db', provider: 'sqlite', url: 'file:./local.db' }],
+    };
+    expect(generator.generate(sqliteAst)).toContain(`driver: 'sqlite',`);
+    expect(generator.generate(testAst)).toContain(`driver: 'postgres',`);
   });
 
   it('should generate constructor with models', () => {
@@ -284,6 +326,42 @@ describe('SqlGenerator', () => {
     it('should generate CREATE TABLE', () => {
       const output = generator.generateDDL(testAst);
       expect(output).toContain('CREATE TABLE IF NOT EXISTS user');
+    });
+  });
+
+  describe('Json column type per provider', () => {
+    const astWithJson: SchemaAST = {
+      ...testAst,
+      model: [
+        {
+          name: 'Doc',
+          fields: [
+            {
+              name: 'id',
+              type: 'Int',
+              isArray: false,
+              isOptional: false,
+              attributes: [{ name: '@id', args: {} }],
+            },
+            { name: 'data', type: 'Json', isArray: false, isOptional: false, attributes: [] },
+          ],
+          attributes: [],
+        },
+      ],
+    };
+
+    it('postgres maps Json to JSONB', () => {
+      expect(new SqlGenerator('postgres').generateDDL(astWithJson)).toContain(
+        'data JSONB NOT NULL',
+      );
+    });
+
+    it('mysql maps Json to JSON', () => {
+      expect(new SqlGenerator('mysql').generateDDL(astWithJson)).toContain('data JSON NOT NULL');
+    });
+
+    it('sqlite maps Json to TEXT', () => {
+      expect(new SqlGenerator('sqlite').generateDDL(astWithJson)).toContain('data TEXT NOT NULL');
     });
   });
 });

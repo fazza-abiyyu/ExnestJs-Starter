@@ -225,11 +225,17 @@ export class ConnectionPool {
     });
   }
 
-  async release(driver: DatabaseDriver): Promise<void> {
+  async release(driver: DatabaseDriver, isBroken = false): Promise<void> {
     this.inUseCount = Math.max(0, this.inUseCount - 1);
 
     if (this.closed) {
       await driver.close();
+      return;
+    }
+
+    if (isBroken) {
+      // Broken connection — close & discard. Never handoff or idle-pool.
+      await driver.close().catch(() => {});
       return;
     }
 
@@ -314,7 +320,7 @@ export class ConnectionPool {
       } catch (error) {
         lastError = error as Error;
         this.stats.totalErrors++;
-        await driver.close().catch(() => {});
+        await this.release(driver, true);
 
         if (attempt < maxAttempts - 1) {
           await this.backoffDelay(attempt);
@@ -340,7 +346,7 @@ export class ConnectionPool {
       } catch (error) {
         lastError = error as Error;
         this.stats.totalErrors++;
-        await driver.close().catch(() => {});
+        await this.release(driver, true);
 
         if (attempt < maxAttempts - 1) {
           await this.backoffDelay(attempt);

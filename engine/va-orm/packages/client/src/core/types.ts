@@ -180,7 +180,7 @@ export interface ModelMeta {
   primaryKey: string;
   relations: Map<string, RelationMeta>;
   /** Optional schema fields — enables @updatedAt auto-touch when present. */
-  fields?: Array<{ name: string; attributes: Array<{ name: string }> }>;
+  fields?: Array<{ name: string; type?: string; attributes: Array<{ name: string }> }>;
 }
 
 export type ScalarFilter<T = any> =
@@ -208,11 +208,48 @@ export interface RelationFilter {
   isNot?: WhereInput;
 }
 
+/**
+ * JSON document filter (Prisma-style).
+ *
+ * ```ts
+ * // key di dalam kolom JSON
+ * { metadata: { path: 'city', equals: 'Jakarta' } }
+ * { metadata: { path: '$.address.city', contains: 'Jak' } }
+ * { metadata: { path: ['address', 'city'], equals: 'Bandung' } }
+ * { metadata: { path: 'tags', arrayContains: 'vip' } }
+ * { metadata: { path: 'deletedAt', exists: false } }
+ * ```
+ *
+ * `path` menerima dot notation (`'address.city'`), JSONPath-ish
+ * (`'$.address.city'`, `'tags[0]'`) atau segmen array (`['address', 'city']`).
+ * Kosongkan untuk operasi di root dokumen (mis. kolomnya sendiri array).
+ */
+export interface JsonFilter {
+  path?: string | Array<string | number>;
+  equals?: any;
+  not?: any;
+  in?: any[];
+  notIn?: any[];
+  lt?: any;
+  lte?: any;
+  gt?: any;
+  gte?: any;
+  contains?: string;
+  startsWith?: string;
+  endsWith?: string;
+  mode?: 'default' | 'insensitive';
+  /** Scalar harus jadi anggota array JSON di `path`. */
+  arrayContains?: any;
+  /** Cek keberadaan path (true = ada, false = tidak ada). */
+  exists?: boolean;
+}
+
 export interface WhereInput {
   AND?: WhereInput[];
   OR?: WhereInput[];
   NOT?: WhereInput | WhereInput[];
-  [field: string]: ScalarFilter | RelationFilter | WhereInput[] | WhereInput | undefined;
+  [field: string]:
+    ScalarFilter | JsonFilter | RelationFilter | WhereInput[] | WhereInput | undefined;
 }
 
 export type IncludeArg =

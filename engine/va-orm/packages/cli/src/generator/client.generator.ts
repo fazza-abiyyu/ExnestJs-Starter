@@ -48,7 +48,7 @@ export class ClientGenerator {
         this.w.block(
           `super({`,
           () => {
-            this.w.line(`driver: 'postgres',`);
+            this.w.line(`driver: '${driverFor(ast.datasource[0]?.provider)}',`);
             this.w.line(`dsn: config.connectionString,`);
             this.w.line(`pooling: config.pooling ?? true,`);
             this.w.line(`schema,`);
@@ -118,4 +118,11 @@ export class ClientGenerator {
   private toCamelCase(str: string): string {
     return str.charAt(0).toLowerCase() + str.slice(1);
   }
+}
+
+/** Map a datasource provider to the VaClient driver name. */
+export function driverFor(datasourceProvider: string | undefined): 'postgres' | 'mysql' | 'sqlite' {
+  if (datasourceProvider === 'mysql') return 'mysql';
+  if (datasourceProvider === 'sqlite') return 'sqlite';
+  return 'postgres';
 }

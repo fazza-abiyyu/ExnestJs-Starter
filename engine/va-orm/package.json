@@ -1,6 +1,6 @@
 {
   "name": "@v-va/orm",
-  "version": "0.1.0-beta.4",
+  "version": "0.1.0-beta.6",
   "description": "VA-ORM — lightweight, production-grade TypeScript ORM (PostgreSQL, MySQL, SQLite). Schema-first, zero heavy engine.",
   "type": "module",
   "main": "./packages/client/dist/index.js",
@@ -72,7 +72,7 @@
     "bun": ">=1.0.0"
   },
   "peerDependencies": {
-    "pg": ">=8.0.0",
+    "pg": "",
     "mysql2": ">=3.0.0",
     "better-sqlite3": ">=9.0.0"
   },
@@ -93,5 +93,9 @@
     "prettier": "^3.9.6",
     "tsup": "^8.0.0",
     "typescript": "^5.5.0"
+  },
+  "dependencies": {
+    "@types/pg": "^8.23.1",
+    "pg": "^8.22.0"
   }
 }

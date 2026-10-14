@@ -13,6 +13,8 @@ import type {
 } from '../core/types.js';
 import { QueryBuilder } from '../core/query-builder.js';
 import { applyWhere } from '../relation/filters.js';
+import { dialectOf } from '../core/json-path.js';
+import { decodeJsonRows } from './json-codec.js';
 import { IncludeLoader } from '../relation/include.js';
 import { resolveSelect, stripColumns } from '../relation/select.js';
 import { NestedWriter } from './nested.writes.js';
@@ -95,7 +97,9 @@ export class ModelDelegate<T extends Record<string, any> = Record<string, any>> 
     if (args.where) {
       const meta = this.meta;
       const registry = this.registry;
-      builder.where((eb) => applyWhere(eb, args.where, meta, registry, quote));
+      builder.where((eb) =>
+        applyWhere(eb, args.where, meta, registry, quote, undefined, 1, dialectOf(this.driver)),
+      );
     }
 
     if (args.orderBy) {
@@ -108,6 +112,7 @@ export class ModelDelegate<T extends Record<string, any> = Record<string, any>> 
     if (args.skip !== undefined) builder.offset(args.skip);
 
     const rows = await builder.execute();
+    decodeJsonRows(this.meta, rows);
 
     if (args.include) {
       await this.loader.load(rows, this.meta, args.include);
@@ -122,7 +127,9 @@ export class ModelDelegate<T extends Record<string, any> = Record<string, any>> 
       const meta = this.meta;
       const registry = this.registry;
       const quote = this.quote;
-      builder.where((eb) => applyWhere(eb, where, meta, registry, quote));
+      builder.where((eb) =>
+        applyWhere(eb, where, meta, registry, quote, undefined, 1, dialectOf(this.driver)),
+      );
     }
     return builder.count();
   }

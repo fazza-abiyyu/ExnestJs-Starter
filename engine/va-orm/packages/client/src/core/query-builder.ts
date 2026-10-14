@@ -10,6 +10,7 @@ import {
   isRawSql,
 } from './expression.js';
 import { quoteColumn, quoteTable } from '../relation/quote.js';
+import { dialectOf } from './json-path.js';
 
 export class QueryBuilder<T = any> {
   private _select: string[] = [];
@@ -112,8 +113,10 @@ export class QueryBuilder<T = any> {
   // ============ WHERE ============
 
   where(fn: (builder: ExpressionBuilder) => void): this {
-    const builder = ExpressionBuilder.create(this._placeholderFn, (name) =>
-      quoteColumn(this.driver, name),
+    const builder = ExpressionBuilder.create(
+      this._placeholderFn,
+      (name) => quoteColumn(this.driver, name),
+      dialectOf(this.driver),
     );
     fn(builder);
     const { sql, params } = builder.build();
@@ -147,6 +150,7 @@ export class QueryBuilder<T = any> {
     const builder = ExpressionBuilder.create(
       (i) => `?`,
       (name) => quoteColumn(this.driver, name),
+      dialectOf(this.driver),
     );
     fn(builder);
     const { sql, params } = builder.build();

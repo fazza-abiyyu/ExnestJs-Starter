@@ -7,6 +7,7 @@ import type { DatabaseDriver, ModelMeta, RelationMeta } from '../core/types.js';
 import { ansiQuote, quoteColumn, quoteTable } from '../relation/quote.js';
 import type { QuoteFn } from '../relation/quote.js';
 import { buildSetClause } from './field.ops.js';
+import { decodeJsonRow, decodeJsonRows, encodeJsonFields } from './json-codec.js';
 
 export interface NestedCreateOp {
   create?: Record<string, any> | Record<string, any>[];
@@ -91,7 +92,7 @@ export class NestedWriter {
   }
 
   async insertRow(model: ModelMeta, data: Record<string, any>): Promise<Record<string, any>> {
-    const touched = this.touchTimestamps(model, data);
+    const touched = encodeJsonFields(model, this.touchTimestamps(model, data));
     const columns = Object.keys(touched);
     if (columns.length === 0) {
       throw new Error(`Cannot create ${model.name} with empty data`);
@@ -101,7 +102,7 @@ export class NestedWriter {
     const quotedColumns = columns.map((c) => quoteColumn(this.driver, c));
     const sql = `INSERT INTO ${quoteTable(this.driver, model.table)} (${quotedColumns.join(', ')}) VALUES (${placeholders.join(', ')}) RETURNING *`;
     const result = await this.driver.query(sql, values);
-    return result.rows[0];
+    return decodeJsonRow(model, result.rows[0]);
   }
 
   async create(modelName: string, data: NestedData): Promise<Record<string, any>> {
@@ -477,7 +478,7 @@ export class NestedWriter {
     });
     const sql = `SELECT * FROM ${quoteTable(this.driver, model.table)}${clauses.length > 0 ? ` WHERE ${clauses.join(' AND ')}` : ''}`;
     const result = await this.driver.query(sql, params);
-    return result.rows;
+    return decodeJsonRows(model, result.rows);
   }
 
   private async updateRows(
@@ -487,11 +488,12 @@ export class NestedWriter {
   ): Promise<void> {
     // Preserve empty-update no-op; only touch timestamps on real writes.
     const touched = Object.keys(data).length === 0 ? data : this.touchTimestamps(model, data);
-    const setEntries = Object.entries(touched);
+    const encoded = encodeJsonFields(model, touched);
+    const setEntries = Object.entries(encoded);
     if (setEntries.length === 0) return;
     const whereEntries = Object.entries(where);
     const { setParts, params, nextIndex } = buildSetClause(
-      touched,
+      encoded,
       (i) => this.driver.getPlaceholder(i),
       (name) => quoteColumn(this.driver, name),
     );

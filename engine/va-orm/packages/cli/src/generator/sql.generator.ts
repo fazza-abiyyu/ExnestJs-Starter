@@ -257,7 +257,7 @@ export class SqlGenerator {
       Boolean: 'BOOLEAN',
       DateTime: 'TIMESTAMP',
       Uuid: 'UUID',
-      Json: 'JSONB',
+      Json: this.provider === 'sqlite' ? 'TEXT' : this.provider === 'mysql' ? 'JSON' : 'JSONB',
       Bytes: 'BYTEA',
     };
 

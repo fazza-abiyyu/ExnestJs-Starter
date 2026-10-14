@@ -1,6 +1,7 @@
 // VA-ORM Client - Main Entry Point
 
 export * from './core/types.js';
+export * from './core/json-path.js';
 export * from './core/va.client.js';
 export * from './core/connection.pool.js';
 export * from './core/query-builder.js';
@@ -10,6 +11,7 @@ export * from './repository/repository.js';
 export * from './repository/batch.js';
 export * from './repository/aggregation.js';
 export * from './repository/model.delegate.js';
+export * from './repository/json-codec.js';
 export * from './repository/nested.writes.js';
 export * from './repository/field.ops.js';
 

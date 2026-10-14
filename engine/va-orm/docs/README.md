@@ -19,33 +19,34 @@ docs/
 ├── 10-cli.md              # CLI tools
 ├── 11-testing.md          # Testing strategy
 ├── 12-relations.md        # Relations (include, filters, nested writes)
-└── 13-security.md         # Security plan & audit remediation
+├── 13-security.md         # Security plan & audit remediation
+└── 14-json.md             # JSON columns (auto-serialize + search)
 ```
 
 ## Quick Start
 
 ```typescript
-import { VaClient } from '@exnest/va'
+import { VaClient } from '@exnest/va';
 
 const client = await VaClient.create({
   driver: 'postgresql',
   dsn: process.env.DATABASE_URL,
-})
+});
 
 const users = await client.repository('user').findMany({
   where: (eb) => eb.eq('status', 'active'),
   orderBy: { column: 'createdAt', direction: 'desc' },
   limit: 10,
-})
+});
 ```
 
 ## Package Structure
 
-| Package | npm name | Role |
-|---------|----------|------|
+| Package           | npm name            | Role                        |
+| ----------------- | ------------------- | --------------------------- |
 | `packages/schema` | `@exnest/va-schema` | Schema parsing & validation |
-| `packages/client` | `@exnest/va-client` | Runtime ORM library |
-| `packages/cli` | `@exnest/va-cli` | CLI tools |
+| `packages/client` | `@exnest/va-client` | Runtime ORM library         |
+| `packages/cli`    | `@exnest/va-cli`    | CLI tools                   |
 
 ## Design Principles
 

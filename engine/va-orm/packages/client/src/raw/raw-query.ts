@@ -3,6 +3,7 @@
 import type { DatabaseDriver } from '../core/types.js';
 import { quoteColumn, quoteTable } from '../relation/quote.js';
 import { assertSafeInteger, ExpressionBuilder } from '../core/expression.js';
+import { dialectOf } from '../core/json-path.js';
 
 /** Escape a value interpolated into a SQL string literal (e.g. tsquery language). */
 function escapeLiteral(value: string, dialect?: string): string {
@@ -184,6 +185,7 @@ export class RawQuery {
       const filterEb = new ExpressionBuilder(
         (i) => this.driver.getPlaceholder(base + i),
         (name) => quoteColumn(this.driver, name),
+        dialectOf(this.driver),
       );
       options.filter(filterEb);
       const built = filterEb.build();

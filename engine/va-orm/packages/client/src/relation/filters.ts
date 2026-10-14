@@ -5,7 +5,8 @@
 // All identifiers are quoted to support camelCase columns on PostgreSQL.
 
 import { ExpressionBuilder } from '../core/expression.js';
-import type { ModelMeta, RelationMeta, WhereInput } from '../core/types.js';
+import type { JsonDialect, JsonPathInput } from '../core/json-path.js';
+import type { JsonFilter, ModelMeta, RelationMeta, WhereInput } from '../core/types.js';
 import { JoinBuilder } from './join.builder.js';
 import { ansiQuote } from './quote.js';
 import { escapeLike } from '../core/security.js';
@@ -18,6 +19,11 @@ function isRelationFilterObject(value: any): boolean {
   return ['some', 'every', 'none', 'is', 'isNot'].some((k) => k in value);
 }
 
+function isJsonFilterObject(value: any): boolean {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  return 'path' in value || 'arrayContains' in value || 'exists' in value;
+}
+
 export function applyWhere(
   eb: ExpressionBuilder,
   where: WhereInput | undefined,
@@ -26,14 +32,16 @@ export function applyWhere(
   quote: QuoteFn = ansiQuote,
   parentAlias?: string,
   depth = 1,
+  dialect: JsonDialect = 'postgres',
 ): void {
   if (!where) return;
+  eb.setDialect(dialect);
   const alias = parentAlias ?? model.table;
 
   if (Array.isArray(where.AND)) {
     eb.group((g) => {
       for (const clause of where.AND as WhereInput[]) {
-        applyWhere(g, clause, model, registry, quote, alias, depth);
+        applyWhere(g, clause, model, registry, quote, alias, depth, dialect);
       }
     });
   }
@@ -43,7 +51,7 @@ export function applyWhere(
       const clauses = where.OR as WhereInput[];
       clauses.forEach((clause, i) => {
         if (i > 0) g.or();
-        applyWhere(g, clause, model, registry, quote, alias, depth);
+        applyWhere(g, clause, model, registry, quote, alias, depth, dialect);
       });
     });
   }
@@ -51,7 +59,7 @@ export function applyWhere(
   if (where.NOT !== undefined) {
     const clauses = Array.isArray(where.NOT) ? where.NOT : [where.NOT];
     for (const clause of clauses as WhereInput[]) {
-      eb.not().group((g) => applyWhere(g, clause, model, registry, quote, alias, depth));
+      eb.not().group((g) => applyWhere(g, clause, model, registry, quote, alias, depth, dialect));
     }
   }
 
@@ -68,7 +76,10 @@ export function applyWhere(
         quote,
         alias,
         depth,
+        dialect,
       );
+    } else if (isJsonFilterObject(condition)) {
+      applyJsonFilter(eb, field, condition as JsonFilter);
     } else {
       // Raw field name — quoting happens exactly once at SQL-build time
       // inside ExpressionBuilder. Pre-quoting here would double-quote.
@@ -120,14 +131,51 @@ function applyScalarFilter(eb: ExpressionBuilder, column: string, condition: any
   }
 }
 
+/** Prisma-style JSON filter → dialect-aware ExpressionBuilder JSON helpers. */
+function applyJsonFilter(eb: ExpressionBuilder, column: string, condition: JsonFilter): void {
+  const path: JsonPathInput = condition.path ?? '$';
+  if (condition.exists !== undefined) {
+    if (condition.exists) eb.jsonExists(column, path);
+    else eb.jsonNotExists(column, path);
+  }
+  if (condition.equals !== undefined) eb.jsonEq(column, path, condition.equals);
+  if (condition.not !== undefined) eb.jsonNotEq(column, path, condition.not);
+  if (condition.in !== undefined) eb.jsonIn(column, path, condition.in);
+  if (condition.notIn !== undefined) eb.jsonNotIn(column, path, condition.notIn);
+  if (condition.lt !== undefined) eb.jsonLt(column, path, condition.lt);
+  if (condition.lte !== undefined) eb.jsonLte(column, path, condition.lte);
+  if (condition.gt !== undefined) eb.jsonGt(column, path, condition.gt);
+  if (condition.gte !== undefined) eb.jsonGte(column, path, condition.gte);
+  const insensitive = condition.mode === 'insensitive';
+  if (condition.contains !== undefined) {
+    const pattern = `%${escapeLike(condition.contains)}%`;
+    if (insensitive) eb.jsonILike(column, path, pattern);
+    else eb.jsonLike(column, path, pattern);
+  }
+  if (condition.startsWith !== undefined) {
+    const pattern = `${escapeLike(condition.startsWith)}%`;
+    if (insensitive) eb.jsonILike(column, path, pattern);
+    else eb.jsonLike(column, path, pattern);
+  }
+  if (condition.endsWith !== undefined) {
+    const pattern = `%${escapeLike(condition.endsWith)}`;
+    if (insensitive) eb.jsonILike(column, path, pattern);
+    else eb.jsonLike(column, path, pattern);
+  }
+  if (condition.arrayContains !== undefined) {
+    eb.jsonArrayContains(column, path, condition.arrayContains);
+  }
+}
+
 function childCondition(
   childWhere: WhereInput | undefined,
   childModel: ModelMeta,
   registry: Map<string, ModelMeta>,
   quote: QuoteFn,
   depth: number,
+  dialect: JsonDialect = 'postgres',
 ): { sql: string; params: any[] } {
-  const child = ExpressionBuilder.create(() => '?');
+  const child = ExpressionBuilder.create(() => '?', undefined, dialect);
   applyWhere(
     child,
     childWhere,
@@ -136,6 +184,7 @@ function childCondition(
     quote,
     depth === 1 ? '__rel' : `__rel${depth}`,
     depth + 1,
+    dialect,
   );
   return child.build();
 }
@@ -149,6 +198,7 @@ function applyRelationFilter(
   quote: QuoteFn,
   parentAlias: string,
   depth: number,
+  dialect: JsonDialect = 'postgres',
 ): void {
   const child = registry.get(meta.targetModel);
   if (!child) {
@@ -158,35 +208,35 @@ function applyRelationFilter(
   const relAlias = depth === 1 ? '__rel' : `__rel${depth}`;
 
   if (filter.some !== undefined) {
-    const { sql, params } = childCondition(filter.some, child, registry, quote, depth);
+    const { sql, params } = childCondition(filter.some, child, registry, quote, depth, dialect);
     eb.raw(
       `EXISTS (SELECT 1 FROM ${childTable} AS ${relAlias} WHERE ${existsJoin(meta, parent, child, relAlias, quote, parentAlias, depth)} ${andWrap(sql)})`,
       ...params,
     );
   }
   if (filter.every !== undefined) {
-    const { sql, params } = childCondition(filter.every, child, registry, quote, depth);
+    const { sql, params } = childCondition(filter.every, child, registry, quote, depth, dialect);
     eb.raw(
       `NOT EXISTS (SELECT 1 FROM ${childTable} AS ${relAlias} WHERE ${existsJoin(meta, parent, child, relAlias, quote, parentAlias, depth)} AND NOT (${sql || '1 = 1'}))`,
       ...params,
     );
   }
   if (filter.none !== undefined) {
-    const { sql, params } = childCondition(filter.none, child, registry, quote, depth);
+    const { sql, params } = childCondition(filter.none, child, registry, quote, depth, dialect);
     eb.raw(
       `NOT EXISTS (SELECT 1 FROM ${childTable} AS ${relAlias} WHERE ${existsJoin(meta, parent, child, relAlias, quote, parentAlias, depth)} ${andWrap(sql)})`,
       ...params,
     );
   }
   if (filter.is !== undefined) {
-    const { sql, params } = childCondition(filter.is, child, registry, quote, depth);
+    const { sql, params } = childCondition(filter.is, child, registry, quote, depth, dialect);
     eb.raw(
       `EXISTS (SELECT 1 FROM ${childTable} AS ${relAlias} WHERE ${existsJoin(meta, parent, child, relAlias, quote, parentAlias, depth)} ${andWrap(sql)})`,
       ...params,
     );
   }
   if (filter.isNot !== undefined) {
-    const { sql, params } = childCondition(filter.isNot, child, registry, quote, depth);
+    const { sql, params } = childCondition(filter.isNot, child, registry, quote, depth, dialect);
     const nullChecks = parentFkNullChecks(meta, parent, quote, parentAlias);
     eb.group((g) => {
       if (nullChecks) g.raw(nullChecks);
@@ -247,8 +297,9 @@ export function buildWhere(
   registry: Map<string, ModelMeta>,
   placeholderFn?: (index: number) => string,
   quote: QuoteFn = ansiQuote,
+  dialect: JsonDialect = 'postgres',
 ): { sql: string; params: any[] } {
-  const eb = ExpressionBuilder.create(placeholderFn);
-  applyWhere(eb, where, model, registry, quote);
+  const eb = ExpressionBuilder.create(placeholderFn, undefined, dialect);
+  applyWhere(eb, where, model, registry, quote, undefined, 1, dialect);
   return eb.build();
 }

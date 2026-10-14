@@ -13,6 +13,7 @@ import type {
 } from '../core/types.js';
 import { QueryBuilder } from '../core/query-builder.js';
 import { ExpressionBuilder } from '../core/expression.js';
+import { dialectOf } from '../core/json-path.js';
 import { buildSetClause } from './field.ops.js';
 import { quoteColumn, quoteTable } from '../relation/quote.js';
 
@@ -420,6 +421,10 @@ export class Repository<T extends Record<string, any>> {
   }
 
   expression(): ExpressionBuilder {
-    return ExpressionBuilder.create((i) => this.driver.getPlaceholder(i));
+    return ExpressionBuilder.create(
+      (i) => this.driver.getPlaceholder(i),
+      undefined,
+      dialectOf(this.driver),
+    );
   }
 }

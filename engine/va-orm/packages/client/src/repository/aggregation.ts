@@ -5,6 +5,7 @@
 
 import type { DatabaseDriver, ModelMeta, WhereInput } from '../core/types.js';
 import { buildWhere } from '../relation/filters.js';
+import { dialectOf } from '../core/json-path.js';
 import { quoteColumn, quoteTable } from '../relation/quote.js';
 import type { QuoteFn } from '../relation/quote.js';
 import { assertSafeDirection, assertSafeInteger } from '../core/expression.js';
@@ -178,6 +179,7 @@ export class AggregationRepository<T extends Record<string, any>> {
         new Map(),
         ph,
         this.quote,
+        dialectOf(this.driver),
       );
       if (whereSql) {
         sql += ` WHERE ${whereSql}`;
@@ -213,6 +215,7 @@ export class AggregationRepository<T extends Record<string, any>> {
         new Map(),
         ph,
         this.quote,
+        dialectOf(this.driver),
       );
       if (whereSql) {
         sql += ` WHERE ${whereSql}`;

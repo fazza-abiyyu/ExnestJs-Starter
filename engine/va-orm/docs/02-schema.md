@@ -84,19 +84,22 @@ enum Status {
 
 ## Field Types
 
-| Schema Type | TypeScript | PostgreSQL | MySQL | SQLite |
-|-------------|------------|------------|-------|--------|
-| `String` | `string` | VARCHAR(255) | VARCHAR(255) | TEXT |
-| `Text` | `string` | TEXT | TEXT | TEXT |
-| `Int` | `number` | INTEGER | INT | INTEGER |
-| `BigInt` | `bigint` | BIGINT | BIGINT | INTEGER |
-| `Float` | `number` | FLOAT | FLOAT | REAL |
-| `Decimal` | `number` | DECIMAL | DECIMAL | REAL |
-| `Boolean` | `boolean` | BOOLEAN | BOOLEAN | INTEGER |
-| `DateTime` | `Date` | TIMESTAMP | DATETIME | TEXT |
-| `Uuid` | `string` | UUID | VARCHAR(36) | TEXT |
-| `Json` | `any` | JSON | JSON | TEXT |
-| `Bytes` | `Buffer` | BYTEA | BLOB | BLOB |
+| Schema Type | TypeScript | PostgreSQL   | MySQL        | SQLite  |
+| ----------- | ---------- | ------------ | ------------ | ------- |
+| `String`    | `string`   | VARCHAR(255) | VARCHAR(255) | TEXT    |
+| `Text`      | `string`   | TEXT         | TEXT         | TEXT    |
+| `Int`       | `number`   | INTEGER      | INT          | INTEGER |
+| `BigInt`    | `bigint`   | BIGINT       | BIGINT       | INTEGER |
+| `Float`     | `number`   | FLOAT        | FLOAT        | REAL    |
+| `Decimal`   | `number`   | DECIMAL      | DECIMAL      | REAL    |
+| `Boolean`   | `boolean`  | BOOLEAN      | BOOLEAN      | INTEGER |
+| `DateTime`  | `Date`     | TIMESTAMP    | DATETIME     | TEXT    |
+| `Uuid`      | `string`   | UUID         | VARCHAR(36)  | TEXT    |
+| `Json`      | `any`      | JSONB        | JSON         | TEXT    |
+| `Bytes`     | `Buffer`   | BYTEA        | BLOB         | BLOB    |
+
+Kolom `Json` auto-serialize (tulis object, baca balik object) dan bisa
+di-search per-path — lihat [14-json.md](./14-json.md).
 
 ## Field Attributes
 
@@ -176,24 +179,24 @@ The `SchemaParser.parse()` method returns a `SchemaAST`:
 
 ```typescript
 interface SchemaAST {
-  generator: GeneratorBlock[]
-  datasource: DatasourceBlock[]
-  model: ModelBlock[]
-  enum: EnumBlock[]
+  generator: GeneratorBlock[];
+  datasource: DatasourceBlock[];
+  model: ModelBlock[];
+  enum: EnumBlock[];
 }
 
 interface ModelBlock {
-  name: string
-  fields: FieldDefinition[]
-  attributes: ModelAttribute[]
+  name: string;
+  fields: FieldDefinition[];
+  attributes: ModelAttribute[];
 }
 
 interface FieldDefinition {
-  name: string
-  type: string
-  isArray: boolean
-  isOptional: boolean
-  attributes: FieldAttribute[]
+  name: string;
+  type: string;
+  isArray: boolean;
+  isOptional: boolean;
+  attributes: FieldAttribute[];
 }
 ```
 
