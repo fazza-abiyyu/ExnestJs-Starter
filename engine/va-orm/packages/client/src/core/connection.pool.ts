@@ -15,6 +15,17 @@ interface PooledConnection {
   isHealthy: boolean;
 }
 
+/** Opsi yang diteruskan ke driver (PostgresDriver / MysqlDriver) — ConnectionPool config tidak menyimpan ini. */
+interface DriverPassthrough {
+  max?: number;
+  min?: number;
+  idleTimeoutMs?: number;
+  connectionTimeoutMs?: number;
+  ssl?: boolean | { rejectUnauthorized?: boolean; ca?: string; cert?: string; key?: string };
+  applicationName?: string;
+  disablePreparedStatements?: boolean;
+}
+
 export class ConnectionPool {
   private static globalFactories: Map<DriverType, (dsn: string) => DatabaseDriver> = new Map();
 
@@ -51,6 +62,8 @@ export class ConnectionPool {
     onSlowQuery?: (info: SlowQueryInfo) => void;
     retryMode: 'reads' | 'none' | 'all';
   };
+  /** Opsi user yang harus diteruskan ke driver — **jangan hilang** (sebelumnya ConnectionPool tidak pass ini). */
+  private driverOptions: DriverPassthrough;
   private stats = {
     totalQueries: 0,
     totalErrors: 0,
@@ -89,6 +102,19 @@ export class ConnectionPool {
       driverFactory: options.driverFactory,
       slowQueryThresholdMs: options.slowQueryThresholdMs,
       onSlowQuery: options.onSlowQuery,
+    };
+
+    // === BUG FIX: simpan opsi driver-level yang tidak masuk ke this.config ===
+    // Sebelumnya ssl, idleTimeoutMs driver, disablePreparedStatements, dll
+    // tidak pernah sampai ke PostgresDriver/MysqlDriver saat createConnection().
+    this.driverOptions = {
+      max: 1, // ConnectionPool wrapper selalu bikin 1 driver per slot
+      min: 1,
+      connectionTimeoutMs: this.config.connectionTimeoutMs,
+      idleTimeoutMs: this.config.idleTimeoutMs,
+      applicationName: this.config.applicationName,
+      disablePreparedStatements: this.config.disablePreparedStatements,
+      ssl: options.ssl,
     };
 
     this.ready = this.init();
@@ -133,19 +159,13 @@ export class ConnectionPool {
       switch (this.driverType) {
         case 'postgres': {
           const { PostgresDriver } = await import('../drivers/postgres/postgres.driver.js');
-          driver = new PostgresDriver(this.dsn, {
-            max: 1,
-            connectionTimeoutMs: this.config.connectionTimeoutMs,
-            applicationName: this.config.applicationName,
-          });
+          // === BUG FIX: pass seluruh driverOptions, bukan 3 field saja ===
+          driver = new PostgresDriver(this.dsn, this.driverOptions);
           break;
         }
         case 'mysql': {
           const { MysqlDriver } = await import('../drivers/mysql/mysql.driver.js');
-          driver = new MysqlDriver(this.dsn, {
-            max: 1,
-            connectionTimeoutMs: this.config.connectionTimeoutMs,
-          });
+          driver = new MysqlDriver(this.dsn, this.driverOptions);
           break;
         }
         case 'sqlite': {
@@ -250,11 +270,16 @@ export class ConnectionPool {
       return;
     }
 
+    // === BUG FIX: jangan reset useCount ke 0 ===
+    // Sebelumnya selalu useCount: 0 → maxUses di acquire() tidak pernah kena.
+    const reuseCount = (driver as any).__vaPoolUseCount ?? 1;
+    (driver as any).__vaPoolUseCount = reuseCount;
+
     // Return to idle pool
     const conn: PooledConnection = {
       driver,
       lastUsed: Date.now(),
-      useCount: 0,
+      useCount: reuseCount,
       isHealthy: true,
     };
 
@@ -313,6 +338,7 @@ export class ConnectionPool {
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       const driver = await this.acquire();
       try {
+        (driver as any).__vaPoolUseCount = ((driver as any).__vaPoolUseCount ?? 0) + 1;
         const result = await driver.query<T>(sql, params);
         this.trackQuery(sql, params, start);
         await this.release(driver);
@@ -339,6 +365,7 @@ export class ConnectionPool {
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       const driver = await this.acquire();
       try {
+        (driver as any).__vaPoolUseCount = ((driver as any).__vaPoolUseCount ?? 0) + 1;
         const result = await driver.execute(sql, params);
         this.trackQuery(sql, params, start);
         await this.release(driver);
@@ -360,6 +387,7 @@ export class ConnectionPool {
   async transaction<T>(fn: (driver: DatabaseDriver) => Promise<T>): Promise<T> {
     const driver = await this.acquire();
     try {
+      (driver as any).__vaPoolUseCount = ((driver as any).__vaPoolUseCount ?? 0) + 1;
       const result = await driver.transaction(fn);
       this.stats.totalQueries++;
       return result;
@@ -388,6 +416,17 @@ export class ConnectionPool {
       const conn = this.connections[index];
       await conn.driver.close().catch(() => {});
       this.connections.splice(index, 1);
+    }
+
+    // === BUG FIX: recreate sampai kembali ke `min` connections ===
+    // Sebelumnya setelah unhealthy dihapus, pool bisa turun di bawah min permanen.
+    while (this.connections.length < this.config.min) {
+      try {
+        this.connections.push(await this.createConnection());
+      } catch {
+        // kalau DB down, biarkan di bawah min — akan cek lagi interval berikutnya
+        break;
+      }
     }
   }
 
