@@ -18,6 +18,35 @@ jobs:
   security-audit:
     name: Security audit (fail on CRITICAL)
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: va_orm_live_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: va_orm_live_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -uroot -proot"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 30
+    env:
+      VA_TEST_PG_URL: postgres://postgres:postgres@127.0.0.1:5432/va_orm_live_test
+      VA_TEST_MYSQL_URL: mysql://root:root@127.0.0.1:3306/va_orm_live_test
     steps:
       - uses: actions/checkout@v4
 
