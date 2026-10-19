@@ -94,7 +94,20 @@ export class PostgresDriver implements DatabaseDriver {
       config.ssl = this.options.ssl;
     }
 
-    return new Pool(config);
+    const pool = new Pool(config);
+
+    // Wajib: error event tanpa listener → crash proses (unhandled 'error').
+    // Koneksi idle yang dibanting server (mis. Aiven max_connections /
+    // maintenance) masuk sini — cukup warning, pool menandai client
+    // terlepas dan koneksi berikutnya dibuat baru otomatis.
+    (pool as PgPool & { on: (event: 'error', fn: (err: Error, client: unknown) => void) => void }).on(
+      'error',
+      (err) => {
+        console.warn(`[va-orm] postgres pool error (idle client disconnected): ${String(err)}`);
+      },
+    );
+
+    return pool;
   }
 
   async query<T = any>(sql: string, params?: any[]): Promise<QueryResult<T>> {
