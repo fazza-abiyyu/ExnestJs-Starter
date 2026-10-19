@@ -2,6 +2,7 @@
 
 import type {
   DatabaseDriver,
+  DriverOptions,
   DriverType,
   ConnectionConfig,
   PoolStats,
@@ -15,21 +16,16 @@ interface PooledConnection {
   isHealthy: boolean;
 }
 
-/** Opsi yang diteruskan ke driver (PostgresDriver / MysqlDriver) — ConnectionPool config tidak menyimpan ini. */
-interface DriverPassthrough {
-  max?: number;
-  min?: number;
-  idleTimeoutMs?: number;
-  connectionTimeoutMs?: number;
-  ssl?: boolean | { rejectUnauthorized?: boolean; ca?: string; cert?: string; key?: string };
-  applicationName?: string;
-  disablePreparedStatements?: boolean;
-}
-
 export class ConnectionPool {
-  private static globalFactories: Map<DriverType, (dsn: string) => DatabaseDriver> = new Map();
+  private static globalFactories: Map<
+    DriverType,
+    (dsn: string, options?: DriverOptions) => DatabaseDriver
+  > = new Map();
 
-  static registerFactory(type: DriverType, factory: (dsn: string) => DatabaseDriver): void {
+  static registerFactory(
+    type: DriverType,
+    factory: (dsn: string, options?: DriverOptions) => DatabaseDriver,
+  ): void {
     ConnectionPool.globalFactories.set(type, factory);
   }
 
@@ -57,13 +53,13 @@ export class ConnectionPool {
       | 'retryMode'
     >
   > & {
-    driverFactory?: (dsn: string) => DatabaseDriver;
+    driverFactory?: (dsn: string, options?: DriverOptions) => DatabaseDriver;
     slowQueryThresholdMs?: number;
     onSlowQuery?: (info: SlowQueryInfo) => void;
     retryMode: 'reads' | 'none' | 'all';
   };
   /** Opsi user yang harus diteruskan ke driver — **jangan hilang** (sebelumnya ConnectionPool tidak pass ini). */
-  private driverOptions: DriverPassthrough;
+  private driverOptions: DriverOptions;
   private stats = {
     totalQueries: 0,
     totalErrors: 0,
@@ -154,7 +150,9 @@ export class ConnectionPool {
       this.config.driverFactory || ConnectionPool.globalFactories.get(this.driverType);
 
     if (factory) {
-      driver = factory(this.dsn);
+      // Pass driver options too: custom factories used to receive only the DSN,
+      // which silently dropped ssl / applicationName / timeouts.
+      driver = factory(this.dsn, this.driverOptions);
     } else {
       switch (this.driverType) {
         case 'postgres': {

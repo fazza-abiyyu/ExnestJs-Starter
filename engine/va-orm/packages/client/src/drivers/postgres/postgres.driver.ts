@@ -12,6 +12,38 @@ interface PgPool {
   end(): Promise<void>;
 }
 
+/**
+ * pg 8.23 warns that `sslmode=require|prefer|verify-ca` are aliases of
+ * `verify-full`. Rewrite those modes so pg does not emit the deprecation
+ * warning — the effective behavior is unchanged because pg already treats
+ * them as verify-full. `uselibpqcompat=true` opts into libpq semantics
+ * explicitly, so it is left untouched.
+ *
+ * String-level replacement keeps every other byte of the DSN (password
+ * encoding, params, channel_binding, ...) exactly as provided.
+ */
+export function normalizeSslMode(connectionString: string): string {
+  if (/[?&]uselibpqcompat=true(?:&|#|$)/i.test(connectionString)) {
+    return connectionString;
+  }
+  return connectionString.replace(
+    /([?&]sslmode=)([^&#]*)/i,
+    (match, prefix: string, value: string) => {
+      let mode = value;
+      try {
+        mode = decodeURIComponent(value);
+      } catch {
+        return match;
+      }
+      const normalized = mode.toLowerCase();
+      if (normalized === 'require' || normalized === 'prefer' || normalized === 'verify-ca') {
+        return `${prefix}verify-full`;
+      }
+      return match;
+    },
+  );
+}
+
 export class PostgresDriver implements DatabaseDriver {
   private pool: PgPool;
   private appName: string;
@@ -24,7 +56,7 @@ export class PostgresDriver implements DatabaseDriver {
       min?: number;
       idleTimeoutMs?: number;
       connectionTimeoutMs?: number;
-      ssl?: boolean | { rejectUnauthorized?: boolean; ca?: string };
+      ssl?: boolean | { rejectUnauthorized?: boolean; ca?: string; cert?: string; key?: string };
       applicationName?: string;
       disablePreparedStatements?: boolean;
     } = {},
@@ -45,17 +77,24 @@ export class PostgresDriver implements DatabaseDriver {
   private createPool(): PgPool {
     // Uses native `pg` Pool when available
     const { Pool } = require('pg');
-    return new Pool({
-      connectionString: this.connectionString,
+    const config: Record<string, unknown> = {
+      connectionString: normalizeSslMode(this.connectionString),
       max: this.options.max ?? 20,
       min: this.options.min ?? 2,
       idleTimeoutMillis: this.options.idleTimeoutMs ?? 10000,
       connectionTimeoutMillis: this.options.connectionTimeoutMs ?? 5000,
-      ssl: this.options.ssl || false,
       application_name: this.appName,
       // PgBouncer compatibility: disable prepared statements
       ...(this.pgbouncerMode ? { prepareThreshold: 0 } : {}),
-    });
+    };
+
+    // Only set `ssl` when explicitly configured. Forcing `ssl: false` shadows
+    // `sslmode` in the DSN and the PGSSLMODE environment variable inside pg.
+    if (this.options.ssl !== undefined) {
+      config.ssl = this.options.ssl;
+    }
+
+    return new Pool(config);
   }
 
   async query<T = any>(sql: string, params?: any[]): Promise<QueryResult<T>> {

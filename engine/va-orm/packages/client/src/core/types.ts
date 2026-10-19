@@ -73,9 +73,25 @@ export interface ConnectionConfig {
   ssl?: boolean | { rejectUnauthorized?: boolean; ca?: string; cert?: string; key?: string };
   applicationName?: string;
   disablePreparedStatements?: boolean;
-  driverFactory?: (dsn: string) => DatabaseDriver;
+  driverFactory?: (dsn: string, options?: DriverOptions) => DatabaseDriver;
   slowQueryThresholdMs?: number;
   onSlowQuery?: (info: SlowQueryInfo) => void;
+}
+
+/**
+ * Options forwarded to a driver instance. Passed as the second argument to
+ * `driverFactory` so custom factories do not silently drop ssl/pool settings.
+ */
+export interface DriverOptions {
+  max?: number;
+  min?: number;
+  idleTimeoutMs?: number;
+  connectionTimeoutMs?: number;
+  ssl?: boolean | { rejectUnauthorized?: boolean; ca?: string; cert?: string; key?: string };
+  applicationName?: string;
+  disablePreparedStatements?: boolean;
+  readonly?: boolean;
+  wal?: boolean;
 }
 
 export interface SlowQueryInfo {

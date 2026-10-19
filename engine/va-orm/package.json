@@ -1,6 +1,6 @@
 {
   "name": "@v-va/orm",
-  "version": "0.1.0-beta.7",
+  "version": "0.1.0-beta.8",
   "description": "VA-ORM — lightweight, production-grade TypeScript ORM (PostgreSQL, MySQL, SQLite). Schema-first, zero heavy engine.",
   "type": "module",
   "main": "./packages/client/dist/index.js",
@@ -29,6 +29,18 @@
     "./elysia": {
       "import": "./packages/client/dist/integrations/elysia/index.js",
       "types": "./packages/client/dist/integrations/elysia/index.d.ts"
+    },
+    "./drivers/postgres": {
+      "import": "./packages/client/dist/drivers/postgres/postgres.driver.js",
+      "types": "./packages/client/dist/drivers/postgres/postgres.driver.d.ts"
+    },
+    "./drivers/mysql": {
+      "import": "./packages/client/dist/drivers/mysql/mysql.driver.js",
+      "types": "./packages/client/dist/drivers/mysql/mysql.driver.d.ts"
+    },
+    "./drivers/sqlite": {
+      "import": "./packages/client/dist/drivers/sqlite/sqlite.driver.js",
+      "types": "./packages/client/dist/drivers/sqlite/sqlite.driver.d.ts"
     }
   },
   "files": [
@@ -40,6 +52,7 @@
     "va": "bun packages/cli/bin/va.ts",
     "build": "tsup",
     "test": "bun test",
+    "test:live": "bun test packages/client/src/__tests__/live",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "format": "prettier --write \"packages/*/src/**/*.ts\" \"packages/cli/bin/*.ts\" \"*.json\" \"*.ts\"",
     "format:check": "prettier --check \"packages/*/src/**/*.ts\" \"packages/cli/bin/*.ts\" \"*.json\" \"*.ts\"",
@@ -90,12 +103,13 @@
   "devDependencies": {
     "@types/node": "^22.0.0",
     "bun-types": "^1.2.0",
+    "mysql2": "^3.15.3",
     "prettier": "^3.9.6",
     "tsup": "^8.0.0",
     "typescript": "^5.5.0"
   },
   "dependencies": {
     "@types/pg": "^8.23.1",
-    "pg": "^8.22.0"
+    "pg": "^8.23.1"
   }
 }

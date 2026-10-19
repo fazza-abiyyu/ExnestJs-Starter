@@ -20,6 +20,63 @@ interface MySqlConnection {
   release(): void;
 }
 
+export type MysqlSslOption =
+  boolean | { rejectUnauthorized?: boolean; ca?: string; cert?: string; key?: string };
+
+/**
+ * Resolve SSL for mysql2 from the driver option or the connection string.
+ * The DSN is the usual carrier in env config (`DATABASE_URL=mysql://...?ssl=...`),
+ * and previously those params were dropped because only the option was read.
+ */
+export function resolveMysqlSsl(
+  connectionString: string,
+  explicit?: MysqlSslOption,
+): Record<string, unknown> | undefined {
+  if (explicit !== undefined) {
+    if (explicit === true) return {};
+    if (explicit === false) return undefined;
+    return explicit;
+  }
+
+  const url = new URL(connectionString);
+  const raw = url.searchParams.get('ssl');
+  if (raw !== null && raw !== '') {
+    if (raw === 'true' || raw === '1') return {};
+    if (raw === 'false' || raw === '0') return undefined;
+    if (raw.trimStart().startsWith('{')) {
+      try {
+        return JSON.parse(raw) as Record<string, unknown>;
+      } catch (error) {
+        throw VaError.wrap(error, 'invalid ssl query parameter (expected JSON)', 'INVALID_SSL');
+      }
+    }
+  }
+
+  // Both libpq (`sslmode=require`) and MySQL (`ssl-mode=REQUIRED`) spellings.
+  const mode = (
+    url.searchParams.get('sslmode') ??
+    url.searchParams.get('ssl-mode') ??
+    url.searchParams.get('ssl_mode')
+  )?.toLowerCase();
+  switch (mode) {
+    case 'disable':
+    case 'disabled':
+    case 'prefer':
+    case 'preferred':
+      return undefined;
+    case 'require':
+    case 'required':
+      return { rejectUnauthorized: false };
+    case 'verify-ca':
+    case 'verify_ca':
+    case 'verify-full':
+    case 'verify_identity':
+      return { rejectUnauthorized: true };
+    default:
+      return undefined;
+  }
+}
+
 export class MysqlDriver implements DatabaseDriver {
   private pool: MySqlPool;
 
@@ -30,7 +87,7 @@ export class MysqlDriver implements DatabaseDriver {
       min?: number;
       idleTimeoutMs?: number;
       connectionTimeoutMs?: number;
-      ssl?: boolean | { rejectUnauthorized?: boolean };
+      ssl?: MysqlSslOption;
     } = {},
   ) {
     this.pool = this.createPool();
@@ -39,16 +96,19 @@ export class MysqlDriver implements DatabaseDriver {
   private createPool(): MySqlPool {
     const mysql = require('mysql2/promise');
     const url = new URL(this.connectionString);
+    const ssl = resolveMysqlSsl(this.connectionString, this.options.ssl);
     return mysql.createPool({
       host: url.hostname,
       port: parseInt(url.port || '3306'),
       user: url.username,
       password: url.password,
       database: url.pathname.slice(1),
-      max: this.options.max ?? 20,
+      // mysql2 names the pool limit `connectionLimit`; `max` triggers a
+      // "Ignoring invalid configuration option" warning and is dropped.
+      connectionLimit: this.options.max ?? 20,
       idleTimeout: this.options.idleTimeoutMs ?? 10000,
       connectTimeout: this.options.connectionTimeoutMs ?? 5000,
-      ssl: this.options.ssl || undefined,
+      ...(ssl ? { ssl } : {}),
     });
   }
 

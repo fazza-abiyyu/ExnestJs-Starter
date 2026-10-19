@@ -1,11 +1,45 @@
 // VA-ORM SQLite Driver
 
-import { Database } from 'bun:sqlite';
+import { createRequire } from 'module';
 import type { DatabaseDriver, QueryResult } from '../../core/types.js';
 import { VaError } from '../../core/errors.js';
 
+const require = createRequire(import.meta.url);
+
+interface BunStatement {
+  all(...params: any[]): any[];
+  run(...params: any[]): { changes: number };
+}
+
+interface BunDatabase {
+  query(sql: string): BunStatement;
+  exec(sql: string): void;
+  close(): void;
+}
+
+interface BunDatabaseCtor {
+  new (filename: string, options?: { readonly?: boolean; create?: boolean }): BunDatabase;
+}
+
+/**
+ * Load `bun:sqlite` at call time, not via a static import — otherwise importing
+ * `@v-va/orm` under Node fails with ERR_UNSUPPORTED_ESM_URL_SCHEME even when
+ * only PostgreSQL/MySQL is used. Opening a SQLite database still requires Bun.
+ */
+function loadBunSqlite(): BunDatabaseCtor {
+  try {
+    return (require('bun:sqlite') as { Database: BunDatabaseCtor }).Database;
+  } catch (error) {
+    throw VaError.wrap(
+      error,
+      'sqlite driver requires the Bun runtime (bun:sqlite is unavailable)',
+      'UNSUPPORTED_RUNTIME',
+    );
+  }
+}
+
 export class SqliteDriver implements DatabaseDriver {
-  private db: Database;
+  private db: BunDatabase;
   private txDepth = 0;
   private filename: string;
 
@@ -21,7 +55,8 @@ export class SqliteDriver implements DatabaseDriver {
     this.db = this.open();
   }
 
-  private open(): Database {
+  private open(): BunDatabase {
+    const Database = loadBunSqlite();
     const db = new Database(this.filename, {
       readonly: this.options.readonly ?? false,
       create: true,

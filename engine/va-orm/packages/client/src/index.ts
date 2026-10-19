@@ -32,5 +32,9 @@ export * from './pagination/adapters/graphql.adapter.js';
 
 export { VaClient } from './core/va.client.js';
 export type { VaClientOptions } from './core/va.client.js';
+
+export { PostgresDriver } from './drivers/postgres/postgres.driver.js';
+export { MysqlDriver } from './drivers/mysql/mysql.driver.js';
+export { SqliteDriver } from './drivers/sqlite/sqlite.driver.js';
 export type { SchemaAST } from '../../schema/src/schema.types.js';
 export { VaError } from './core/errors.js';
