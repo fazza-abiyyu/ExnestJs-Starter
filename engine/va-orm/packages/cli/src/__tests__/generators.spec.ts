@@ -187,6 +187,9 @@ describe('ClientGenerator', () => {
     expect(driverFor('sqlite')).toBe('sqlite');
     expect(driverFor(undefined)).toBe('postgres');
     expect(driverFor('weird')).toBe('postgres');
+    expect(driverFor('http')).toBe('http');
+    expect(driverFor('https')).toBe('http');
+    expect(driverFor('http+sqlite')).toBe('http');
   });
 
   it('should use sqlite driver for sqlite datasource', () => {
@@ -196,6 +199,22 @@ describe('ClientGenerator', () => {
     };
     expect(generator.generate(sqliteAst)).toContain(`driver: 'sqlite',`);
     expect(generator.generate(testAst)).toContain(`driver: 'postgres',`);
+  });
+
+  it('should generate the http driver with the remote dialect', () => {
+    const httpAst: SchemaAST = {
+      ...testAst,
+      datasource: [{ name: 'db', provider: 'http', url: 'env("DATABASE_URL")' }],
+    };
+    const output = generator.generate(httpAst);
+    expect(output).toContain(`driver: 'http',`);
+    expect(output).toContain(`http: { dialect: 'postgres' },`);
+
+    const httpSqliteAst: SchemaAST = {
+      ...testAst,
+      datasource: [{ name: 'db', provider: 'http+sqlite', url: 'env("DATABASE_URL")' }],
+    };
+    expect(generator.generate(httpSqliteAst)).toContain(`http: { dialect: 'sqlite' },`);
   });
 
   it('should generate constructor with models', () => {

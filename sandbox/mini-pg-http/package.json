@@ -1,0 +1,19 @@
+{
+  "name": "mini-pg-http",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Mini SQL-over-HTTP server — bridge ke PostgreSQL asli + mini in-memory SQL engine",
+  "main": "src/server.ts",
+  "scripts": {
+    "start": "bun run src/server.ts",
+    "start:memory": "MINI_PG_BACKEND=memory bun run src/server.ts"
+  },
+  "dependencies": {
+    "pg": "^8.23.1"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.23.1",
+    "bun-types": "^1.2.0"
+  }
+}

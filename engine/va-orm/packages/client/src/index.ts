@@ -36,5 +36,14 @@ export type { VaClientOptions } from './core/va.client.js';
 export { PostgresDriver } from './drivers/postgres/postgres.driver.js';
 export { MysqlDriver } from './drivers/mysql/mysql.driver.js';
 export { SqliteDriver } from './drivers/sqlite/sqlite.driver.js';
+export { HttpDriver } from './drivers/http/http.driver.js';
+export {
+  HTTP_PROFILES,
+  detectHttpProtocol,
+  resolveHttpProfile,
+  encodeTursoValue,
+  decodeTursoValue,
+} from './drivers/http/http.protocols.js';
+export type { HttpProtocolProfile } from './drivers/http/http.protocols.js';
 export type { SchemaAST } from '../../schema/src/schema.types.js';
 export { VaError } from './core/errors.js';

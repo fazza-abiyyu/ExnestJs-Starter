@@ -4,15 +4,15 @@
 // MySQL (JSON) and SQLite (JSON1). All values stay bind parameters —
 // path keys are escaped into string literals, never interpolated raw.
 
-import type { DriverType } from './types.js';
+import type { SqlDialect } from './types.js';
 
-export type JsonDialect = 'postgres' | 'mysql' | 'sqlite';
+export type JsonDialect = SqlDialect;
 
 export type JsonPathInput = string | Array<string | number>;
 
 export type JsonKey = string | number;
 
-export function dialectOf(driver: { getDialect?: () => DriverType } | undefined): JsonDialect {
+export function dialectOf(driver: { getDialect?: () => SqlDialect } | undefined): JsonDialect {
   try {
     const d = driver?.getDialect?.();
     if (d === 'mysql' || d === 'sqlite' || d === 'postgres') return d;

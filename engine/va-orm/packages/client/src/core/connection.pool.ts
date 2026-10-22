@@ -48,6 +48,7 @@ export class ConnectionPool {
       | 'filename'
       | 'ssl'
       | 'driverFactory'
+      | 'http'
       | 'slowQueryThresholdMs'
       | 'onSlowQuery'
       | 'retryMode'
@@ -79,14 +80,18 @@ export class ConnectionPool {
   ) {
     this.config = {
       max: options.max ?? 20,
-      min: options.min ?? 2,
+      // Transport http tidak punya "koneksi" — satu instance driver = satu
+      // http client. Slot minimum 1 cukup; jangan buat instance sia-sia.
+      min: options.min ?? (this.driverType === 'http' ? 1 : 2),
       idleTimeoutMs: options.idleTimeoutMs ?? 10000,
       connectionTimeoutMs: options.connectionTimeoutMs ?? 5000,
       maxLifetimeMs: options.maxLifetimeMs ?? 1800000, // 30 minutes
       maxUses: options.maxUses ?? 7500,
       statementTimeoutMs: options.statementTimeoutMs ?? 30000,
       lockTimeoutMs: options.lockTimeoutMs ?? 10000,
-      healthCheck: options.healthCheck ?? true,
+      // Health check = 1 query per interval ke API berbayar. Default OFF
+      // untuk transport http, bisa dinyalakan ulang lewat `healthCheck: true`.
+      healthCheck: options.healthCheck ?? this.driverType !== 'http',
       healthCheckIntervalMs: options.healthCheckIntervalMs ?? 30000,
       healthCheckQuery: options.healthCheckQuery ?? this.getDefaultHealthCheckQuery(),
       retryAttempts: options.retryAttempts ?? 3,
@@ -111,6 +116,7 @@ export class ConnectionPool {
       applicationName: this.config.applicationName,
       disablePreparedStatements: this.config.disablePreparedStatements,
       ssl: options.ssl,
+      http: options.http,
     };
 
     this.ready = this.init();
@@ -123,6 +129,8 @@ export class ConnectionPool {
       case 'mysql':
         return 'SELECT 1';
       case 'sqlite':
+        return 'SELECT 1';
+      case 'http':
         return 'SELECT 1';
     }
   }
@@ -169,6 +177,11 @@ export class ConnectionPool {
         case 'sqlite': {
           const { SqliteDriver } = await import('../drivers/sqlite/sqlite.driver.js');
           driver = new SqliteDriver(this.dsn);
+          break;
+        }
+        case 'http': {
+          const { HttpDriver } = await import('../drivers/http/http.driver.js');
+          driver = new HttpDriver(this.dsn, this.driverOptions.http);
           break;
         }
         default:
@@ -310,14 +323,29 @@ export class ConnectionPool {
   }
 
   /**
-   * How many times this statement may be attempted (1 = no retry).
+   * Whether this statement may be attempted again.
+   *
    * Default `reads` never retries writes — avoids double INSERT/UPDATE.
+   * Error that explicitly says `retryable: false` (mis. HTTP 400) is never
+   * retried either: retrying a broken statement only wastes time.
    */
   private maxAttemptsFor(sql: string, method: 'query' | 'execute'): number {
     if (this.config.retryMode === 'none') return 1;
     if (this.config.retryMode === 'all') return this.config.retryAttempts + 1;
     if (method === 'execute') return 1;
     return this.isReadOnlySql(sql) ? this.config.retryAttempts + 1 : 1;
+  }
+
+  /** Error yang menandai dirinya non-retryable (mis. HTTP 4xx). */
+  private static isRetryable(error: unknown): boolean {
+    if (
+      error &&
+      typeof error === 'object' &&
+      (error as { retryable?: boolean }).retryable === false
+    ) {
+      return false;
+    }
+    return true;
   }
 
   private async backoffDelay(attempt: number): Promise<void> {
@@ -346,8 +374,11 @@ export class ConnectionPool {
         this.stats.totalErrors++;
         await this.release(driver, true);
 
-        if (attempt < maxAttempts - 1) {
+        const canRetry = attempt < maxAttempts - 1 && ConnectionPool.isRetryable(error);
+        if (canRetry) {
           await this.backoffDelay(attempt);
+        } else {
+          break;
         }
       }
     }
@@ -373,8 +404,11 @@ export class ConnectionPool {
         this.stats.totalErrors++;
         await this.release(driver, true);
 
-        if (attempt < maxAttempts - 1) {
+        const canRetry = attempt < maxAttempts - 1 && ConnectionPool.isRetryable(error);
+        if (canRetry) {
           await this.backoffDelay(attempt);
+        } else {
+          break;
         }
       }
     }

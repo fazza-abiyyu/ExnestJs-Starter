@@ -29,6 +29,7 @@ export default defineConfig([
       'drivers/postgres/postgres.driver': 'packages/client/src/drivers/postgres/postgres.driver.ts',
       'drivers/mysql/mysql.driver': 'packages/client/src/drivers/mysql/mysql.driver.ts',
       'drivers/sqlite/sqlite.driver': 'packages/client/src/drivers/sqlite/sqlite.driver.ts',
+      'drivers/http/http.driver': 'packages/client/src/drivers/http/http.driver.ts',
     },
     outDir: 'packages/client/dist',
   },

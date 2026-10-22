@@ -147,26 +147,38 @@ export class ModelDelegate<T extends Record<string, any> = Record<string, any>> 
   }
 
   async create(args: CreateArgs): Promise<Record<string, any>> {
-    return this.driver.transaction(async (txDriver) => {
-      const writer = new NestedWriter(txDriver, this.registry, this.quote);
+    const run = async (driver: DatabaseDriver) => {
+      const writer = new NestedWriter(driver, this.registry, this.quote);
       const row = await writer.create(this.meta.name, args.data);
       if (args.include) {
-        const loader = new IncludeLoader(txDriver, this.registry, this.quote);
+        const loader = new IncludeLoader(driver, this.registry, this.quote);
         await loader.load([row], this.meta, args.include);
       }
       return row;
-    });
+    };
+
+    // Transport stateless (SQL-over-HTTP tanpa session) tidak bisa
+    // transaction — jalankan langsung daripada melempar error.
+    if (this.driver.supportsTransactions === false) {
+      return run(this.driver);
+    }
+    return this.driver.transaction(run);
   }
 
   async update(args: UpdateArgs): Promise<Record<string, any>[]> {
-    return this.driver.transaction(async (txDriver) => {
-      const writer = new NestedWriter(txDriver, this.registry, this.quote);
+    const run = async (driver: DatabaseDriver) => {
+      const writer = new NestedWriter(driver, this.registry, this.quote);
       const rows = await writer.update(this.meta.name, args.where, args.data);
       if (args.include && rows.length > 0) {
-        const loader = new IncludeLoader(txDriver, this.registry, this.quote);
+        const loader = new IncludeLoader(driver, this.registry, this.quote);
         await loader.load(rows, this.meta, args.include);
       }
       return rows;
-    });
+    };
+
+    if (this.driver.supportsTransactions === false) {
+      return run(this.driver);
+    }
+    return this.driver.transaction(run);
   }
 }

@@ -7,6 +7,7 @@
 
 import type { SchemaAST, ModelBlock } from '../../../schema/src/schema.types.js';
 import { CodeWriter, toJsLiteral } from './code.writer.js';
+import { httpDialectFor } from '../commands/driver.factory.js';
 
 export class ClientGenerator {
   private w = new CodeWriter();
@@ -48,9 +49,14 @@ export class ClientGenerator {
         this.w.block(
           `super({`,
           () => {
-            this.w.line(`driver: '${driverFor(ast.datasource[0]?.provider)}',`);
+            const provider = ast.datasource[0]?.provider;
+            this.w.line(`driver: '${driverFor(provider)}',`);
             this.w.line(`dsn: config.connectionString,`);
             this.w.line(`pooling: config.pooling ?? true,`);
+            // Transport http butuh dialect engine remote (postgres | sqlite).
+            if (driverFor(provider) === 'http') {
+              this.w.line(`http: { dialect: '${httpDialectFor(provider)}' },`);
+            }
             this.w.line(`schema,`);
           },
           `});`,
@@ -121,8 +127,13 @@ export class ClientGenerator {
 }
 
 /** Map a datasource provider to the VaClient driver name. */
-export function driverFor(datasourceProvider: string | undefined): 'postgres' | 'mysql' | 'sqlite' {
-  if (datasourceProvider === 'mysql') return 'mysql';
-  if (datasourceProvider === 'sqlite') return 'sqlite';
+export function driverFor(
+  datasourceProvider: string | undefined,
+): 'postgres' | 'mysql' | 'sqlite' | 'http' {
+  if (!datasourceProvider) return 'postgres';
+  const p = datasourceProvider.toLowerCase();
+  if (p === 'mysql') return 'mysql';
+  if (p === 'sqlite') return 'sqlite';
+  if (p === 'http' || p === 'https' || p.startsWith('http+')) return 'http';
   return 'postgres';
 }

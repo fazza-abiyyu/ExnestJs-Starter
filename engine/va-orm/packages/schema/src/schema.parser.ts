@@ -53,11 +53,7 @@ export class SchemaParser {
   }
 
   private tokenize(schema: string): void {
-    // Remove comments
-    const cleaned = schema
-      .replace(/\/\/.*$/gm, '')
-      .replace(/\/\*[\s\S]*?\*\//g, '')
-      .trim();
+    const cleaned = schema.trim();
 
     const tokens: string[] = [];
     let i = 0;
@@ -66,6 +62,21 @@ export class SchemaParser {
       // Skip whitespace
       if (/\s/.test(cleaned[i])) {
         i++;
+        continue;
+      }
+
+      // Line comment — harus dicek DI LUAR string, kalau tidak `//` di dalam
+      // string literal (mis. "postgres://host/db") ikut terhapus.
+      if (cleaned[i] === '/' && cleaned[i + 1] === '/') {
+        while (i < cleaned.length && cleaned[i] !== '\n') i++;
+        continue;
+      }
+
+      // Block comment
+      if (cleaned[i] === '/' && cleaned[i + 1] === '*') {
+        i += 2;
+        while (i < cleaned.length && !(cleaned[i] === '*' && cleaned[i + 1] === '/')) i++;
+        i += 2;
         continue;
       }
 

@@ -21,6 +21,21 @@ import { quoteColumn, quoteTable } from './quote.js';
 import type { QuoteFn } from './quote.js';
 import { assertSafeDirection, assertSafeInteger } from '../core/expression.js';
 
+/**
+ * Baca nilai field dari row.
+ *
+ * Nama kolom di DB di-fold ke lowercase (PostgreSQL/SQLite), sedangkan nama
+ * field di schema bisa camelCase (`userId`). Pola fallback ini sama dengan
+ * yang dipakai JSON codec.
+ */
+export function pickField(row: Record<string, any> | undefined, name: string): any {
+  if (!row) return undefined;
+  if (name in row) return row[name];
+  const lower = name.toLowerCase();
+  if (lower in row) return row[lower];
+  return undefined;
+}
+
 interface ResolvedInclude {
   meta: RelationMeta;
   child: ModelMeta;
@@ -98,7 +113,9 @@ export class IncludeLoader {
 
   private parentKeys<T extends Record<string, any>>(parents: T[], model: ModelMeta): any[] {
     const pk = model.primaryKey;
-    return [...new Set(parents.map((p) => p[pk]).filter((v) => v !== undefined && v !== null))];
+    return [
+      ...new Set(parents.map((p) => pickField(p, pk)).filter((v) => v !== undefined && v !== null)),
+    ];
   }
 
   private async queryChildren(
@@ -181,14 +198,14 @@ export class IncludeLoader {
 
     const grouped = new Map<any, Record<string, any>[]>();
     for (const c of children) {
-      const key = c[fk];
+      const key = pickField(c, fk);
       const list = grouped.get(key) ?? [];
       list.push(c);
       grouped.set(key, list);
     }
 
     for (const parent of parents) {
-      (parent as Record<string, unknown>)[meta.field] = grouped.get(parent[pk]) ?? [];
+      (parent as Record<string, unknown>)[meta.field] = grouped.get(pickField(parent, pk)) ?? [];
     }
 
     if (resolved.include) {
@@ -207,7 +224,9 @@ export class IncludeLoader {
     if (meta.isFkHolder) {
       const fkValues = [
         ...new Set(
-          parents.map((p) => p[meta.fkFields[0]]).filter((v) => v !== undefined && v !== null),
+          parents
+            .map((p) => pickField(p, meta.fkFields[0]))
+            .filter((v) => v !== undefined && v !== null),
         ),
       ];
       if (fkValues.length === 0) {
@@ -218,10 +237,10 @@ export class IncludeLoader {
       const children = await this.queryChildren(child, { column: pk, values: fkValues }, resolved, [
         pk,
       ]);
-      const byPk = new Map(children.map((c) => [c[pk], c]));
+      const byPk = new Map(children.map((c) => [pickField(c, pk), c]));
       for (const parent of parents) {
         (parent as Record<string, unknown>)[meta.field] =
-          byPk.get(parent[meta.fkFields[0]]) ?? null;
+          byPk.get(pickField(parent, meta.fkFields[0])) ?? null;
       }
       if (resolved.include) {
         await this.load(children, child, resolved.include);
@@ -235,9 +254,9 @@ export class IncludeLoader {
       const children = await this.queryChildren(child, { column: fk, values: keys }, resolved, [
         fk,
       ]);
-      const byFk = new Map(children.map((c) => [c[fk], c]));
+      const byFk = new Map(children.map((c) => [pickField(c, fk), c]));
       for (const parent of parents) {
-        (parent as Record<string, unknown>)[meta.field] = byFk.get(parent[pk]) ?? null;
+        (parent as Record<string, unknown>)[meta.field] = byFk.get(pickField(parent, pk)) ?? null;
       }
       if (resolved.include) {
         await this.load(children, child, resolved.include);
@@ -304,7 +323,8 @@ export class IncludeLoader {
     }
 
     for (const parent of parents) {
-      (parent as Record<string, unknown>)[meta.field] = grouped.get(parent[parentPk]) ?? [];
+      (parent as Record<string, unknown>)[meta.field] =
+        grouped.get(pickField(parent, parentPk)) ?? [];
     }
 
     if (resolved.include) {

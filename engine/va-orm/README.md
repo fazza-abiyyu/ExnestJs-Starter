@@ -24,6 +24,26 @@ bun add mysql2    # MySQL
 SQLite runs on Bun with zero deps (`bun:sqlite` built in). On Node, use
 PostgreSQL or MySQL.
 
+No TCP? Use the HTTP connector — SQL over `http(s)` for Neon, Prisma
+Accelerate, Cloudflare D1, Turso, or your own SQL-over-HTTP gateway (zero
+deps, global `fetch`):
+
+```ts
+const va = VaClient.create({
+  driver: 'http',
+  dsn: 'https://ep-cool-name-a1b2c3d4.us-east-2.aws.neon.tech/sql',
+  http: {
+    protocol: 'neon',
+    headers: { 'Neon-Connection-String': process.env.DATABASE_URL! },
+  },
+  models: { user: { tableName: 'users' } },
+});
+```
+
+Protocol is auto-detected from the host URL. Setup per provider, transaction
+limits, and migration notes:
+[docs/15-http-connector.md](./docs/15-http-connector.md).
+
 ## Quickstart
 
 **1. Write `va.schema`:**
@@ -63,7 +83,7 @@ const va = VaClient.create({
 
 const user = await va.repository('user').findUnique({ id: '1' });
 const users = await va.repository('user').findMany({ where: { name: 'Jo' }, limit: 10 });
-await va.repository('user').create({ data: { email: 'a@x.dev', name: 'A' } });
+await va.repository('user').create({ email: 'a@x.dev', name: 'A' });
 ```
 
 `@updatedAt` fields auto-refresh on write. Raw SQL, transactions,
@@ -82,7 +102,7 @@ const va = VaClient.create({
   models: { user: { tableName: 'users' } },
 });
 
-await va.repository('user').create({ data: { email: 'a@x.dev' } });
+await va.repository('user').create({ email: 'a@x.dev' });
 ```
 
 Framework adapters (thin wrappers over the same client):

@@ -1,6 +1,6 @@
 {
   "name": "@v-va/orm",
-  "version": "0.1.0-beta.8",
+  "version": "0.1.0-beta.9",
   "description": "VA-ORM — lightweight, production-grade TypeScript ORM (PostgreSQL, MySQL, SQLite). Schema-first, zero heavy engine.",
   "type": "module",
   "main": "./packages/client/dist/index.js",
@@ -41,6 +41,10 @@
     "./drivers/sqlite": {
       "import": "./packages/client/dist/drivers/sqlite/sqlite.driver.js",
       "types": "./packages/client/dist/drivers/sqlite/sqlite.driver.d.ts"
+    },
+    "./drivers/http": {
+      "import": "./packages/client/dist/drivers/http/http.driver.js",
+      "types": "./packages/client/dist/drivers/http/http.driver.d.ts"
     }
   },
   "files": [

@@ -43,7 +43,8 @@ const count = await userRepo.createMany([
   { name: 'John', email: 'john@example.com' },
   { name: 'Jane', email: 'jane@example.com' },
 ]);
-// INSERT INTO users (name, email) VALUES ($1, $2), ($3, $4)
+// 2x: INSERT INTO users (name, email) VALUES ($1, $2) RETURNING *
+// (satu INSERT per baris — bukan multi-row VALUES)
 ```
 
 #### findUnique
@@ -280,7 +281,11 @@ const result = await aggRepo.aggregate({
   _max: ['age'],
   where: (eb) => eb.eq('status', 'active'),
 });
-// { _count: 100, _sum: { salary: 5000000, bonus: 500000 }, _avg: { salary: 50000 }, ... }
+// { _count: 100, _sum_salary: 5000000, _sum_bonus: 500000, _avg_salary: 50000, ... }
+//
+// Catatan: hasil aggregate memakai key FLAT dengan prefix fungsi
+// (`_sum_salary`), bukan nested (`_sum: { salary }`).
+// Field `_count` tetap polos.
 
 // Simple count
 const total = await aggRepo.count({

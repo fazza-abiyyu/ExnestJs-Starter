@@ -3,7 +3,7 @@
 // Introspects a live database and writes va.schema text.
 
 import { SchemaIntrospector } from '../introspect/schema.introspector.js';
-import { createDriverFromUrl, requireDatabaseUrl, detectProvider } from './driver.factory.js';
+import { createDriverFromUrl, requireMigratorUrl, detectProvider } from './driver.factory.js';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 
@@ -14,7 +14,7 @@ export interface PullOptions {
 }
 
 export async function pullCommand(options: PullOptions): Promise<void> {
-  const connectionString = requireDatabaseUrl();
+  const connectionString = requireMigratorUrl();
   const detected = detectProvider(connectionString);
   const provider = options.provider === 'sqlite' || detected === 'sqlite' ? 'sqlite' : 'postgres';
   const output = options.output || './va.pulled.schema';

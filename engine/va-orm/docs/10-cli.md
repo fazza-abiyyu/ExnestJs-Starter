@@ -169,14 +169,52 @@ bun run va db pull                 # Introspect database to schema
 #### Environment Variables
 
 ```bash
-# Required
+# Required — koneksi aplikasi (DML: SELECT/INSERT/UPDATE/DELETE)
 DATABASE_URL=postgresql://user:pass@localhost/db
+
+# Opsional — koneksi untuk DDL (migrate / db push / db pull).
+# Dipakai kalau role aplikasi tidak boleh CREATE.
+MIGRATOR_DATABASE_URL=postgresql://migrator:pass@localhost/db
 
 # Auto-detected from URL protocol:
 # postgresql:// → PostgresDriver
 # mysql:// → MysqlDriver
 # file: → SqliteDriver
+# http(s)://  → HttpDriver (SQL over HTTP)
 ```
+
+#### Pemisahan Role DDL vs DML
+
+Pola produksi yang umum: aplikasi jalan dengan role **R/W**, sedangkan
+perubahan skema dijalankan dengan role **DDL** terpisah.
+
+```bash
+# .env (runtime aplikasi)
+DATABASE_URL=postgresql://research_app:...@host/research_projects
+
+# .env.migrator (khusus tooling)
+MIGRATOR_DATABASE_URL=postgresql://research_migrator:...@host/research_projects
+```
+
+```bash
+# db push / migrate / db pull otomatis pakai MIGRATOR_DATABASE_URL
+MIGRATOR_DATABASE_URL=postgresql://research_migrator:...@host/research_projects \
+  bunx va db push --schema ./va.schema
+```
+
+Kalau role-nya tidak punya hak `CREATE`, `va db push` berhenti dengan pesan
+yang jelas:
+
+```
+✗ DDL ditolak: role ini tidak punya hak CREATE
+  → pakai DSN dengan hak DDL:
+      MIGRATOR_DATABASE_URL=postgresql://<role-ddl>@host/db va db push
+```
+
+> `va migrate` juga sudah mendukung transport HTTP — pakai DSN yang sama
+> seperti `db push`. Endpoint HTTP yang memblokir DDL (menolak `CREATE TABLE`)
+> tidak bisa dipakai untuk `db push`/`migrate`; pakai kredensial TCP untuk
+> langkah itu, atau endpoint lain yang mengizinkan DDL.
 
 #### Status Output
 

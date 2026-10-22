@@ -421,3 +421,4 @@ Tambahkan ke CI setelah Phase 0:
 | `docs/06-raw.md` | API raw SQL |
 | `docs/07-pagination.md` | Adapter OData/GraphQL/REST |
 | `docs/08-migration.md` | Sistem migrasi |
+| `docs/15-http-connector.md` | Transport SQL over HTTP (body request, header, error) |

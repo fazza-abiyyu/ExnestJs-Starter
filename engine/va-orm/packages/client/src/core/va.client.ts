@@ -4,8 +4,10 @@ import type {
   DatabaseDriver,
   DriverType,
   ConnectionConfig,
+  HttpClientOptions,
   ModelMeta,
   RelationMeta,
+  SqlDialect,
   TransactionOptions,
 } from './types.js';
 import type { SchemaAST } from '../../../schema/src/schema.types.js';
@@ -14,6 +16,7 @@ import { tableNameOf } from '../../../schema/src/schema.mapping.js';
 import { quoterFor } from '../relation/quote.js';
 import type { QuoteFn } from '../relation/quote.js';
 import { ConnectionPool } from './connection.pool.js';
+import { detectHttpProtocol, resolveHttpProfile } from '../drivers/http/http.protocols.js';
 import { Repository } from '../repository/repository.js';
 import { ModelDelegate } from '../repository/model.delegate.js';
 import { RawQuery } from '../raw/raw-query.js';
@@ -35,6 +38,8 @@ export interface VaClientOptions {
   dsn: string;
   pooling?: boolean;
   connection?: ConnectionConfig;
+  /** Opsi transport http — dipakai saat `driver: 'http'`. */
+  http?: HttpClientOptions;
   models?: Record<string, { tableName: string; softDelete?: boolean } & { primaryKey?: string }>;
   schema?: SchemaAST;
   modelOptions?: Record<string, VaClientModelOptions>;
@@ -62,10 +67,58 @@ export class VaClient {
   private rawQuery: RawQuery;
   private middleware = new QueryMiddleware();
   private events = new EventEmitter();
+  /**
+   * Dialect SQL yang benar-benar dipakai. Untuk `driver: 'http'` ini adalah
+   * dialect engine remote (postgres/sqlite), bukan transport-nya.
+   */
+  private effectiveDialect: SqlDialect;
+  /**
+   * Gaya placeholder yang harus cocok dengan driver.
+   *
+   * Penting: placeholder harus diketahui **sinkron** — Repository menyusun SQL
+   * sebelum pool selesai membuat driver pertamanya, jadi placeholder tidak
+   * boleh diambil dari instance driver di dalam pool.
+   */
+  private placeholderStyle: 'numbered' | 'positional';
+  /** Apakah driver ini bisa interactive transaction. */
+  private supportsTransactions: boolean;
 
-  constructor(private options: VaClientOptions) {
-    if (options.pooling !== false) {
-      this.pool = new ConnectionPool(options.driver, options.dsn, options.connection);
+  constructor(
+    private options: VaClientOptions,
+    /**
+     * Driver yang sudah jadi (dipakai untuk transaksi).
+     *
+     * Tanpa ini, `transaction()` harus membuat driver baru — tapi repository di
+     * dalam transaksi akan terikat ke driver LAMA, sehingga write-nya keluar
+     * dari transaksi (tidak ter-rollback) dan driver tambahan ikut bocor.
+     */
+    prebuiltDriver?: DatabaseDriver,
+  ) {
+    if (options.driver === 'http') {
+      // Resolve profile yang sama persis dengan yang dipakai HttpDriver,
+      // supaya dialect + placeholder tidak pernah meleset.
+      const http = options.http ?? options.connection?.http ?? {};
+      const profile = resolveHttpProfile({
+        ...http,
+        protocol: http.protocol ?? detectHttpProtocol(options.dsn),
+      });
+      this.effectiveDialect = profile.dialect;
+      this.placeholderStyle = profile.placeholder;
+      this.supportsTransactions = profile.supportsSession;
+    } else {
+      this.effectiveDialect = options.driver;
+      this.placeholderStyle = options.driver === 'postgres' ? 'numbered' : 'positional';
+      this.supportsTransactions = true;
+    }
+
+    if (prebuiltDriver) {
+      this.driver = prebuiltDriver;
+    } else if (options.pooling !== false) {
+      const connection: ConnectionConfig = {
+        ...options.connection,
+        http: options.http ?? options.connection?.http,
+      };
+      this.pool = new ConnectionPool(options.driver, options.dsn, connection);
       this.driver = this.createDriverProxy();
     } else {
       this.driver = this.createDirectDriver();
@@ -119,16 +172,21 @@ export class VaClient {
 
   private createDriverProxy(): DatabaseDriver {
     const pool = this.pool!;
-    const dialect = this.options.driver;
+    const dialect = this.effectiveDialect;
     return {
       query: (sql, params) => pool.query(sql, params),
       execute: (sql, params) => pool.execute(sql, params),
       transaction: (fn) => pool.transaction(fn),
       close: () => pool.close(),
-      getPlaceholder: (index) =>
-        pool['connections'][0]?.driver.getPlaceholder(index) ?? `$${index}`,
+      getPlaceholder: (index) => this.getPlaceholder(index),
       getDialect: () => dialect,
+      supportsTransactions: this.supportsTransactions,
     };
+  }
+
+  /** Placeholder yang dipakai driver ini (`$1` untuk postgres, `?` untuk sqlite). */
+  private getPlaceholder(index: number): string {
+    return this.placeholderStyle === 'positional' ? '?' : `$${index}`;
   }
 
   private createDirectDriver(): DatabaseDriver {
@@ -144,6 +202,10 @@ export class VaClient {
       case 'sqlite': {
         const { SqliteDriver } = require('../drivers/sqlite/sqlite.driver.js');
         return new SqliteDriver(this.options.dsn, this.options.connection);
+      }
+      case 'http': {
+        const { HttpDriver } = require('../drivers/http/http.driver.js');
+        return new HttpDriver(this.options.dsn, this.options.http ?? this.options.connection?.http);
       }
       default:
         throw new Error(`Unsupported driver: ${this.options.driver}`);
@@ -171,7 +233,12 @@ export class VaClient {
     if (!this.delegates.has(name)) {
       this.delegates.set(
         name,
-        new ModelDelegate<T>(this.driver, meta, this.modelRegistry, quoterFor(this.options.driver)),
+        new ModelDelegate<T>(
+          this.driver,
+          meta,
+          this.modelRegistry,
+          quoterFor(this.effectiveDialect),
+        ),
       );
     }
     return this.delegates.get(name) as ModelDelegate<T>;
@@ -196,7 +263,7 @@ export class VaClient {
       }
       this.delegates.set(
         key,
-        new Ctor(this.driver, meta, this.modelRegistry, quoterFor(this.options.driver)),
+        new Ctor(this.driver, meta, this.modelRegistry, quoterFor(this.effectiveDialect)),
       );
     }
     return this.delegates.get(key) as T;
@@ -249,12 +316,9 @@ export class VaClient {
     options?: TransactionOptions,
   ): Promise<R> {
     return this.driver.transaction(async (driver) => {
-      const txClient = new VaClient({
-        ...this.options,
-        pooling: false,
-      });
-      txClient['driver'] = driver;
-      txClient['rawQuery'] = new RawQuery(driver);
+      // Client transaksi memakai driver transaksi yang SAMA — repository di
+      // dalamnya harus terikat ke driver itu, bukan ke driver baru.
+      const txClient = new VaClient({ ...this.options, pooling: false }, driver);
       return fn(txClient);
     });
   }

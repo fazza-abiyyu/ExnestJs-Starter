@@ -20,7 +20,8 @@ docs/
 ├── 11-testing.md          # Testing strategy
 ├── 12-relations.md        # Relations (include, filters, nested writes)
 ├── 13-security.md         # Security plan & audit remediation
-└── 14-json.md             # JSON columns (auto-serialize + search)
+├── 14-json.md             # JSON columns (auto-serialize + search)
+└── 15-http-connector.md   # HTTP connector (SQL over HTTP)
 ```
 
 ## Quick Start

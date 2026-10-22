@@ -187,3 +187,13 @@ model Tag {
 
 Semua identifier di layer relasi di-quote (`"userId"`, `"identity"."users"`)
 agar kolom camelCase aman di PostgreSQL. MySQL memakai backtick otomatis.
+
+> **Catatan casing key.** PostgreSQL/SQLite menyimpan identifier dalam huruf
+> kecil (unquoted identifier di-fold ke lowercase), jadi nama kolom di database
+> menjadi `userid`, bukan `userId`. Key pada row hasil query mengikuti nama
+> kolom database (`row.userid`). Loader relasi sudah toleran terhadap ini —
+> pencocokan FK/PK memakai fallback ke key lowercase — jadi `include` tetap
+> berfungsi untuk field camelCase.
+>
+> Kalau aplikasi butuh key camelCase di row, pakai `@map("userId")` pada field
+> supaya nama kolomnya persis sama dengan nama field di schema.

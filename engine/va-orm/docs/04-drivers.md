@@ -1,6 +1,6 @@
 # Database Drivers
 
-Driver adapter untuk PostgreSQL, MySQL, dan SQLite.
+Driver adapter untuk PostgreSQL, MySQL, SQLite, dan HTTP (SQL over HTTP).
 
 ## DatabaseDriver Interface
 
@@ -11,8 +11,12 @@ interface DatabaseDriver {
   transaction<T>(fn: (driver: DatabaseDriver) => Promise<T>): Promise<T>
   close(): Promise<void>
   getPlaceholder(index: number): string
+  getDialect(): SqlDialect   // 'postgres' | 'mysql' | 'sqlite'
 }
 ```
+
+> `getDialect()` mengembalikan **dialect engine**, bukan tipe transport.
+> Driver `http` ke Neon → `'postgres'`; driver `http` ke D1 → `'sqlite'`.
 
 ## PostgreSQL (`PostgresDriver`)
 
@@ -196,13 +200,33 @@ async transaction<T>(fn: (driver) => Promise<T>): Promise<T> {
 
 ## Driver Comparison
 
-| Feature | PostgreSQL | MySQL | SQLite |
-|---------|------------|-------|--------|
-| Placeholder | `$1, $2, ...` | `?` | `?` |
-| Connection pooling | `pg Pool` | `mysql2/promise` | Single connection |
-| SSL support | Yes | Yes | No |
-| Concurrent writes | Yes | Yes | WAL mode |
-| Best for | Production | Production | Development/Testing |
+| Feature | PostgreSQL | MySQL | SQLite | HTTP |
+|---------|------------|-------|--------|------|
+| Placeholder | `$1, $2, ...` | `?` | `?` | ikut dialect server |
+| Connection pooling | `pg Pool` | `mysql2/promise` | Single connection | batas request paralel |
+| SSL support | Yes | Yes | No | HTTPS |
+| Interactive transaction | Yes | Yes | Yes | hanya protocol session (turso) |
+| Concurrent writes | Yes | Yes | WAL mode | ikut server |
+| Best for | Production | Production | Development/Testing | Serverless / edge |
+
+## HTTP (`HttpDriver`)
+
+Menjalankan SQL lewat endpoint `http://`/`https://` — Neon serverless,
+Prisma Accelerate, Cloudflare D1, Turso/libSQL, atau proxy SQL-over-HTTP
+sendiri. Zero dependency (global `fetch`).
+
+```typescript
+import { HttpDriver } from '@v-va/orm/drivers/http';
+
+const driver = new HttpDriver('https://ep-x.neon.tech/sql', {
+  protocol: 'neon',                    // default: deteksi dari host URL
+  authToken: process.env.DATABASE_TOKEN,
+});
+```
+
+Protocol bawaan: `generic`, `neon`, `accelerate`, `d1`, `turso`. Placeholder,
+quoting, dan JSON search ikut dialect server. Detail lengkap + batasan
+transaction ada di [15-http-connector.md](./15-http-connector.md).
 
 ## Custom Driver
 
@@ -230,6 +254,10 @@ class MyDriver implements DatabaseDriver {
 
   getPlaceholder(index: number): string {
     return `$${index}` // or `?` for MySQL/SQLite
+  }
+
+  getDialect(): SqlDialect {
+    return 'postgres' // dialect engine yang dipakai driver ini
   }
 }
 ```

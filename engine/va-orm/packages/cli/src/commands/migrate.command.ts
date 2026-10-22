@@ -1,6 +1,7 @@
 // VA-ORM Migrate Command
 
 import { Migrator } from '../../../client/src/migration/migrator.js';
+import { createDriverFromUrl, requireMigratorUrl } from './driver.factory.js';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 
@@ -16,26 +17,11 @@ export interface MigrateOptions {
 export async function migrateCommand(options: MigrateOptions): Promise<void> {
   const migrationsDir = options.migrationsDir || './migrations';
 
-  // Load database config from va.schema or environment
-  const connectionString = process.env.DATABASE_URL;
-  if (!connectionString) {
-    console.error('\x1b[31mError: DATABASE_URL environment variable is required\x1b[0m');
-    process.exit(1);
-  }
+  // DDL -> pakai DSN migrator (bisa dipisah dari role aplikasi).
+  const connectionString = requireMigratorUrl();
 
-  // Dynamically import the appropriate driver
-  let driver: any;
-  if (connectionString.startsWith('postgresql://') || connectionString.startsWith('postgres://')) {
-    const { PostgresDriver } =
-      await import('../../../client/src/drivers/postgres/postgres.driver.js');
-    driver = new PostgresDriver(connectionString);
-  } else if (connectionString.startsWith('mysql://')) {
-    const { MysqlDriver } = await import('../../../client/src/drivers/mysql/mysql.driver.js');
-    driver = new MysqlDriver(connectionString);
-  } else if (connectionString.startsWith('file:')) {
-    const { SqliteDriver } = await import('../../../client/src/drivers/sqlite/sqlite.driver.js');
-    driver = new SqliteDriver(connectionString.replace('file:', ''));
-  }
+  // Driver sesuai transport DSN (postgres / mysql / sqlite / http).
+  const driver = await createDriverFromUrl(connectionString);
 
   const migrator = new Migrator(driver, migrationsDir);
 

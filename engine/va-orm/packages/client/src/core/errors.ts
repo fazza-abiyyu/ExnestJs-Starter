@@ -3,12 +3,22 @@
 export class VaError extends Error {
   readonly code: string;
   override readonly cause?: unknown;
+  /**
+   * `false` = error ini tidak transient, jangan di-retry.
+   *
+   * Contoh: HTTP 400 (SQL salah) — retry cuma memperlambat dan membakar kuota.
+   */
+  readonly retryable?: boolean;
 
-  constructor(message: string, options: { code?: string; cause?: unknown } = {}) {
+  constructor(
+    message: string,
+    options: { code?: string; cause?: unknown; retryable?: boolean } = {},
+  ) {
     super(message);
     this.name = 'VaError';
     this.code = options.code ?? 'VA_ERROR';
     this.cause = options.cause;
+    this.retryable = options.retryable;
   }
 
   /** Wrap a driver/ORM error without leaking full DSNs. */

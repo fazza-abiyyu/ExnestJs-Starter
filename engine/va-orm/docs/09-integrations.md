@@ -2,6 +2,10 @@
 
 Integrasi dengan NestJS dan Elysia.
 
+> Semua opsi `VaClientOptions` (termasuk `driver: 'http'`) diteruskan apa
+> adanya — lihat [15-http-connector.md](./15-http-connector.md) untuk detail
+> konektor SQL-over-HTTP.
+
 ## NestJS Integration
 
 ### VaModule
@@ -267,6 +271,33 @@ const app = new Elysia()
 
 console.log(`Server running at http://localhost:3000`)
 ```
+
+## SQL over HTTP (serverless / edge)
+
+Kedua integrasi bisa memakai konektor HTTP tanpa perubahan kode repository —
+cukup ganti `driver` dan isi opsi `http`:
+
+```typescript
+// NestJS
+VaModule.forRoot({
+  driver: 'http',
+  dsn: process.env.VA_HTTP_URL,
+  http: {
+    protocol: 'neon',
+    headers: { 'Neon-Connection-String': process.env.DATABASE_URL! },
+  },
+})
+
+// Elysia
+vaPlugin({
+  driver: 'http',
+  dsn: process.env.VA_HTTP_URL,
+  http: { protocol: 'neon' },
+})
+```
+
+Protocol dideteksi otomatis dari host URL. Ringkasan per provider, batasan
+transaction, dan migrasi ada di [15-http-connector.md](./15-http-connector.md).
 
 ## Graceful Degradation
 

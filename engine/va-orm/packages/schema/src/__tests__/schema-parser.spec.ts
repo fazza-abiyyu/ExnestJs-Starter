@@ -264,4 +264,27 @@ describe('SchemaParser', () => {
       expect(name.attributes.map((a) => a.name)).toContain('@db.VarChar');
     });
   });
+
+  describe('comments vs strings', () => {
+    it('should keep // inside a string literal', () => {
+      const ast = parser.parse(`
+        datasource db {
+          provider = "postgresql"
+          url      = "postgres://user:pass@localhost:5432/mydb"
+        }
+      `);
+      expect(ast.datasource[0].url).toBe('postgres://user:pass@localhost:5432/mydb');
+    });
+
+    it('should still strip real comments', () => {
+      const ast = parser.parse(`
+        // leading comment
+        datasource db {
+          provider = "postgresql"
+          url      = "https://sql.example.com/query" // trailing comment
+        }
+      `);
+      expect(ast.datasource[0].url).toBe('https://sql.example.com/query');
+    });
+  });
 });
