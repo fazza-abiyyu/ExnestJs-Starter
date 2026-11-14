@@ -16,13 +16,13 @@
     "gen:module": "bun run scripts/generate-module.ts",
     "openapi:gen": "bun run scripts/generate-openapi.ts",
     "postman:gen": "bun run scripts/generate-postman.ts",
-    "va:generate": "bun run ../../engine/va-orm/packages/cli/bin/va.ts generate",
-    "va:migrate": "bun run ../../engine/va-orm/packages/cli/bin/va.ts migrate",
-    "va:push": "bun run ../../engine/va-orm/packages/cli/bin/va.ts push",
-    "va:pull": "bun run ../../engine/va-orm/packages/cli/bin/va.ts pull"
+    "va:generate": "va generate",
+    "va:migrate": "va migrate",
+    "va:push": "va push",
+    "va:pull": "va pull"
   },
   "dependencies": {
-    "@v-va/orm": "file:../../engine/va-orm",
+    "@v-va/orm": "^0.1.0-beta.10",
     "elysia": "^1.4.29",
     "pg": "^8.22.0",
     "zod": "^3.23.8"

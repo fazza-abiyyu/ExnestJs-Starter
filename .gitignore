@@ -5,22 +5,6 @@ coverage/
 *.log
 .env
 plan/*
-engine/va-orm/test/
-
-# tsc emit spillover (schema sources pulled into client build)
-engine/va-orm/packages/schema/src/*.js
-engine/va-orm/packages/schema/src/*.d.ts
-engine/va-orm/packages/schema/src/*.js.map
-engine/va-orm/packages/schema/src/*.d.ts.map
-
-# sandbox (e2e terisolasi) — artifact & dependency
-sandbox/packs/
-sandbox/*/node_modules/
-sandbox/*/bun.lock
-engine/va-orm/*.tgz
 
 # kredensial lokal (jangan pernah di-commit)
-engine/va-orm/*.local.env
 *.local.env
-engine/va-orm/connection.env
-engine/va-orm/migrator.env
